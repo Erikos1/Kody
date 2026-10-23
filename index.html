@@ -1,0 +1,1613 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Akciový terminál demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: terminal shell — sticky command bar + tape, then a 12-col panel grid:
+   verdict + KPIs, holdings, detail + sectors, buy ideas, rebalance + risk, projection + settings, import + add */
+:root{
+  color-scheme: dark;
+  --bg:#050607;
+  --panel:#0c0e10;
+  --panel-2:#12151a;
+  --well:#090b0d;
+  --line:#22272e;
+  --line-soft:#171b20;
+  --fg:#d9dde3;
+  --muted:#7d8792;
+  --faint:#4b545e;
+  --amber:#ffa62b;
+  --amber-dim:#7a5214;
+  --cyan:#5fc8ff;
+  --up:#36d17a;
+  --down:#ff5a4f;
+  --warn:#ffd23f;
+  --sel:#1b2a3a;
+  --sb:#00c46a; --b:#7ddc9e; --h:#9aa3ad; --s:#ff8a7a; --ss:#ff3b30;
+  --f-data:"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --f-ui:"IBM Plex Sans Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{background:var(--bg);color:var(--fg)}
+body{font-family:var(--f-ui);font-size:14px;padding-inline:16px;padding-block:0 32px;line-height:1.4}
+a{color:var(--cyan)}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+.num{font-family:var(--f-data);font-variant-numeric:tabular-nums}
+.up{color:var(--up)} .down{color:var(--down)} .muted{color:var(--muted)} .amber{color:var(--amber)}
+.small{font-size:12px}
+
+/* top bar */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);margin-inline:-16px;padding-inline:16px;padding-block:10px 0;overflow:hidden;border-bottom:1px solid var(--line)}
+.brand{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;margin-bottom:8px}
+.brand h1{margin:0;font-family:var(--f-data);font-size:15px;font-weight:700;letter-spacing:.14em;color:#000;background:var(--amber);padding:2px 8px}
+.brand .meta{font-family:var(--f-data);font-size:12px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.brand .meta b{color:var(--amber);font-weight:500}
+.seg{display:inline-flex;border:1px solid var(--line)}
+.seg button{background:transparent;border:0;padding:2px 8px;font-family:var(--f-data);font-size:11px;color:var(--muted);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--amber);color:#000;font-weight:700}
+.cmd{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--amber-dim);padding:6px 8px}
+.cmd label{font-family:var(--f-data);color:var(--amber);font-size:12px;white-space:nowrap}
+.cmd input{flex:1;min-width:0;background:transparent;border:0;outline:none;font-family:var(--f-data);font-size:14px;text-transform:uppercase;color:var(--fg);caret-color:var(--amber)}
+.cmd input::placeholder{color:var(--faint);text-transform:none}
+.go{background:var(--amber);color:#000;border:0;font-family:var(--f-data);font-weight:700;font-size:12px;padding:4px 10px;cursor:pointer}
+.go:hover{filter:brightness(1.1)}
+.status{font-family:var(--f-data);font-size:12px;min-height:18px;padding:4px 0 6px;color:var(--muted);overflow-wrap:anywhere}
+.status.err{color:var(--down)} .status.ok{color:var(--up)}
+.tape{overflow:hidden;white-space:nowrap;margin-inline:-16px;padding:6px 16px;font-family:var(--f-data);font-size:12px;background:#08090b;border-top:1px solid var(--line-soft)}
+.tape-inner{display:inline-block;padding-left:100%;animation:tape 70s linear infinite}
+.tape span{margin-right:26px}
+.tape b{color:var(--amber);font-weight:500;margin-right:6px}
+@keyframes tape{to{transform:translateX(-100%)}}
+@media (prefers-reduced-motion:reduce){.tape-inner{animation:none;padding-left:0}}
+
+.banner{margin-top:12px;border:1px dashed var(--amber-dim);background:#120d05;padding:8px 10px;font-size:13px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+.banner b{color:var(--amber)}
+
+/* grid + panels */
+.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:10px;margin-top:12px}
+.panel{background:var(--panel);border:1px solid var(--line);min-width:0;display:flex;flex-direction:column}
+.ph{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);background:var(--panel-2);flex-wrap:wrap}
+.ph h2{margin:0;font-family:var(--f-data);font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--amber);text-transform:uppercase}
+.ph .code{font-family:var(--f-data);font-size:11px;color:var(--muted)}
+.pb{padding:12px;min-width:0}
+.s12{grid-column:span 12}.s8{grid-column:span 8}.s7{grid-column:span 7}.s6{grid-column:span 6}.s5{grid-column:span 5}.s4{grid-column:span 4}
+@media (max-width:1050px){.s8,.s7,.s6,.s5,.s4{grid-column:span 12}}
+
+/* rating pills */
+.rt{display:inline-block;font-family:var(--f-data);font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:2px 7px;white-space:nowrap;border:1px solid currentColor}
+.rt-sb{background:var(--sb);color:#00140a;border-color:var(--sb)}
+.rt-b{color:var(--b)}
+.rt-h{color:var(--h)}
+.rt-s{color:var(--s)}
+.rt-ss{background:var(--ss);color:#1a0200;border-color:var(--ss)}
+.rt-none{color:var(--faint);border-style:dashed}
+.flag{display:inline-block;font-family:var(--f-data);font-size:10px;padding:1px 5px;border:1px solid currentColor;white-space:nowrap}
+.f-trim{color:var(--warn)} .f-take{color:var(--cyan)} .f-review{color:var(--down)} .f-small{color:#a98bff} .f-ok{color:var(--faint);border-color:transparent}
+.dots{display:inline-flex;gap:2px;vertical-align:middle}
+.dots i{width:9px;height:9px;display:block}
+
+/* verdict */
+.verdict{display:flex;flex-direction:column;gap:10px;height:100%}
+.verdict .lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.verdict .big{font-family:var(--f-data);font-size:30px;font-weight:700;letter-spacing:.02em;line-height:1}
+.scale{display:grid;grid-template-columns:repeat(5,1fr);gap:2px;position:relative;margin-top:14px}
+.scale span{height:8px}
+.scale-l{display:grid;grid-template-columns:repeat(5,1fr);font-family:var(--f-data);font-size:9.5px;color:var(--muted);text-align:center;gap:2px}
+.marker{position:absolute;top:-12px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:9px solid var(--fg);transform:translateX(-6px);transition:left .4s}
+.vtext{font-size:13px;color:var(--fg);margin:0}
+
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+.kpi{padding:12px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.kpi:nth-child(3n){border-right:0}
+.kpi:nth-last-child(-n+3){border-bottom:0}
+.kpi .l{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.kpi .v{font-family:var(--f-data);font-variant-numeric:tabular-nums;font-size:20px;font-weight:500;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi .s{font-family:var(--f-data);font-size:12px;margin-top:2px}
+@media (max-width:560px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi{border-right:1px solid var(--line)!important;border-bottom:1px solid var(--line)!important}.kpi:nth-child(2n){border-right:0!important}.kpi .v{font-size:17px}}
+
+/* table */
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-family:var(--f-data);font-variant-numeric:tabular-nums;font-size:12.5px}
+th,td{padding:5px 8px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line-soft)}
+th{font-family:var(--f-ui);font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--panel);cursor:pointer;user-select:none}
+th:hover{color:var(--fg)}
+th.sorted{color:var(--amber)}
+th.l,td.l{text-align:left}
+th.c,td.c{text-align:center}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:#101419}
+tbody tr.sel{background:var(--sel)}
+td.tk{color:var(--amber);font-weight:700}
+td.tk small{color:var(--faint);font-weight:400}
+td.nm{font-family:var(--f-ui);color:var(--fg);max-width:170px;overflow:hidden;text-overflow:ellipsis}
+.wbar{display:inline-block;height:6px;background:var(--amber);vertical-align:middle;margin-left:6px;opacity:.8}
+input.cell{width:86px;background:#0a0d10;border:1px solid var(--line);padding:2px 4px;text-align:right;font-family:var(--f-data);font-size:12.5px}
+input.cell:focus{border-color:var(--amber);outline:none}
+.x{background:none;border:0;color:var(--muted);cursor:pointer;font-family:var(--f-data);padding:0 4px}
+.x:hover{color:var(--down)}
+tfoot td{color:var(--fg);font-weight:700;border-top:1px solid var(--line);border-bottom:0}
+.ccy{color:var(--faint);font-size:11px;margin-left:3px}
+
+/* sectors */
+.alloc{display:flex;flex-direction:column;gap:7px}
+.arow{display:grid;grid-template-columns:minmax(0,9.5em) minmax(0,1fr) 4.5em;gap:8px;align-items:center;font-size:13px}
+.arow .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.track{height:10px;background:#15191e;position:relative}
+.fill{position:absolute;inset:0 auto 0 0;background:var(--amber)}
+.arow .p{font-family:var(--f-data);text-align:right;font-size:12px}
+.subh{font-family:var(--f-data);font-size:11px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;margin:14px 0 8px}
+
+/* detail */
+.dhead{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin-bottom:12px}
+.dhead .t{font-family:var(--f-data);font-size:22px;font-weight:700;color:var(--amber)}
+.dhead .links{display:flex;gap:12px;font-size:12px;margin-left:auto}
+.dgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width:640px){.dgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.dt .l{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.dt .v{font-family:var(--f-data);font-size:14px;margin-top:2px}
+.dsplit{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:14px}
+@media (max-width:760px){.dsplit{grid-template-columns:1fr}}
+.pbars{display:flex;flex-direction:column;gap:6px}
+.pbar{display:grid;grid-template-columns:minmax(0,10em) minmax(0,1fr) 2.6em;gap:8px;align-items:center;font-size:12.5px}
+.pbar .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dv{position:relative;height:12px;background:#15191e}
+.dv::after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--faint)}
+.dv i{position:absolute;top:0;bottom:0}
+.pbar .sc{font-family:var(--f-data);text-align:right;font-size:12px}
+.thesis{display:flex;flex-direction:column;gap:8px;font-size:13.5px}
+.thesis b{font-family:var(--f-data);font-size:10.5px;letter-spacing:.1em;color:var(--muted);display:block;text-transform:uppercase;font-weight:500}
+
+/* ideas */
+.toolbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.btn{background:transparent;border:1px solid var(--amber);color:var(--amber);font-family:var(--f-data);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer;letter-spacing:.04em}
+.btn:hover{background:var(--amber);color:#000}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.btn.solid{background:var(--amber);color:#000}
+.btn.ghost{border-color:var(--line);color:var(--muted)}
+.btn.ghost:hover{background:var(--panel-2);color:var(--fg)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px;margin-top:12px}
+.card{border:1px solid var(--line);background:var(--well);padding:10px 12px;display:flex;flex-direction:column;gap:7px;min-width:0}
+.card .r1{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card .tk{font-family:var(--f-data);color:var(--amber);font-weight:700;font-size:15px}
+.card .nm{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card p{margin:0;font-size:13px}
+.card .meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-family:var(--f-data);font-size:11px;color:var(--muted)}
+.tag{border:1px solid var(--line);padding:1px 6px;font-family:var(--f-data);font-size:10.5px;color:var(--fg)}
+.hype{display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:center;font-family:var(--f-data);font-size:10.5px;color:var(--muted)}
+.hype .bar{height:5px;background:#1a1f25;position:relative}
+.hype .bar i{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,var(--amber),var(--down))}
+.card .add{align-self:flex-start;margin-top:auto}
+.empty{border:1px dashed var(--line);padding:16px;color:var(--muted);font-size:13px;margin-top:12px}
+.thinking{font-family:var(--f-data);color:var(--amber);margin-top:12px}
+.thinking::after{content:"▌";animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.disc{font-size:12px;color:var(--muted);margin:10px 0 0;max-width:120ch}
+
+/* risk */
+.risk{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.rk{border:1px solid var(--line);padding:8px 10px;background:var(--well)}
+.rk .l{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.rk .v{font-family:var(--f-data);font-size:17px;margin-top:3px}
+.rk .h{font-size:12px;color:var(--muted);margin-top:3px}
+.gauge{height:4px;background:#1a1f25;margin-top:6px;position:relative}
+.gauge i{position:absolute;inset:0 auto 0 0}
+.notes{margin:10px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:13px}
+.notes li{display:grid;grid-template-columns:14px 1fr;gap:6px}
+.notes li::before{content:"▸";color:var(--amber)}
+
+/* forms */
+.fgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.fgrid .w2{grid-column:span 2}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);min-width:0}
+label.f input,label.f select,textarea{background:#0a0d10;border:1px solid var(--line);padding:6px 7px;font-family:var(--f-data);font-size:13px;min-width:0;width:100%}
+label.f input:focus,label.f select:focus,textarea:focus{border-color:var(--amber);outline:none}
+.fx{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.fx label.f input{text-align:right}
+
+/* import */
+.drop{border:1px dashed var(--amber-dim);background:#0d0a05;padding:18px;text-align:center;cursor:pointer;display:flex;flex-direction:column;gap:6px;align-items:center}
+.drop.over{border-color:var(--amber);background:#1a1206}
+.drop b{color:var(--amber);font-family:var(--f-data)}
+.steps{margin:0 0 12px;padding-left:20px;font-size:13px;display:flex;flex-direction:column;gap:3px}
+.steps li::marker{color:var(--amber);font-family:var(--f-data)}
+details.paste{margin-top:10px}
+details.paste summary{cursor:pointer;color:var(--muted);font-size:13px}
+textarea{min-height:90px;resize:vertical;margin-top:6px}
+.prev{margin-top:12px}
+.maprow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:8px}
+@media (max-width:640px){.maprow{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* projection */
+.mc-ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
+.mc-ctl label.f{width:150px}
+.chart{width:100%;height:auto;display:block;margin-top:10px}
+.chart text{fill:var(--muted);font-family:var(--f-data);font-size:11px}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-family:var(--f-data);font-size:11.5px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:14px;height:8px;margin-right:5px;vertical-align:middle}
+.mcstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}
+@media (max-width:640px){.mcstats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* briefing */
+.brief{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px}
+@media (max-width:900px){.brief{grid-template-columns:1fr}}
+.brief .mk{font-size:14px;margin:0 0 10px;max-width:90ch}
+.news{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px;font-size:13px}
+.news li{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:start}
+.news .t{font-family:var(--f-data);font-weight:700;font-size:12px;padding:1px 6px;border-left:3px solid var(--faint);color:var(--amber)}
+.news .t.pos{border-color:var(--up)} .news .t.neg{border-color:var(--down)}
+.chg{display:flex;flex-direction:column;gap:6px;font-size:13px}
+.chg div{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.arr{font-family:var(--f-data);font-size:11px;margin-left:4px}
+.spark{width:100%;height:70px;display:block}
+/* allocator */
+.alc-ctl{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end}
+@media (max-width:420px){.alc-ctl{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.chk{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--fg);cursor:pointer}
+.chk input{accent-color:var(--amber);width:16px;height:16px}
+.stack{display:flex;height:14px;margin-top:12px;gap:2px}
+.stack span{display:block;height:100%}
+.alc-sum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}
+@media (max-width:640px){.alc-sum{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.help{font-family:var(--f-data);font-size:12px;color:var(--muted);display:grid;grid-template-columns:auto 1fr;gap:4px 16px}
+.help b{color:var(--amber);font-weight:500;overflow-wrap:anywhere}
+@media (max-width:640px){.help{grid-template-columns:1fr}.help span{margin-bottom:6px}}
+.foot{margin-top:14px;font-size:12px;color:var(--muted);font-family:var(--f-data)}
+.lv{color:var(--up);font-size:9px;margin-left:3px;vertical-align:middle}
+.today{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@media (max-width:760px){.today{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.todo{margin:12px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:7px;font-size:13.5px}
+.todo li{display:grid;grid-template-columns:22px 1fr;gap:6px;align-items:start}
+.todo .ic{font-family:var(--f-data);font-weight:700;text-align:center}
+.todo .ok{color:var(--up)} .todo .wa{color:var(--warn)} .todo .in{color:var(--cyan)}
+#liveState.on{color:var(--up)} #liveState.warn{color:var(--warn)}
+.card .r1>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.card .r1 .rt{flex:none}
+/* donuts */
+.donuts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#008300;--s7:#9085e9;--s8:#e66767;--oth:#4b545e}
+@media (max-width:900px){.donuts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:600px){.donuts{grid-template-columns:1fr}}
+.dn{display:flex;flex-direction:column;gap:10px;min-width:0}
+.dn h3{margin:0;font-family:var(--f-data);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.dn svg{width:100%;max-width:190px;height:auto;display:block;margin:0 auto;overflow:visible}
+.dn svg circle.seg{cursor:pointer;transition:opacity .15s}
+.dn svg:hover circle.seg{opacity:.45}
+.dn svg circle.seg:hover,.dn svg circle.seg.on{opacity:1}
+.dn text{pointer-events:none}
+.dn .c1{font-family:var(--f-data);font-size:20px;font-weight:700;fill:var(--fg)}
+.dn .c2{font-family:var(--f-data);font-size:9.5px;fill:var(--muted);letter-spacing:.04em}
+.dleg{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:12.5px}
+.dleg li{display:grid;grid-template-columns:10px minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:1px 4px}
+.dleg li.on{background:var(--panel-2)}
+.dleg i{width:10px;height:10px;border-radius:2px;display:block}
+.dleg .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dleg .p{font-family:var(--f-data);color:var(--fg);text-align:right}
+.dleg .v{font-family:var(--f-data);color:var(--muted);text-align:right;min-width:5.5em}
+.dtip{position:fixed;z-index:20;pointer-events:none;background:var(--panel-2);border:1px solid var(--line);padding:6px 9px;font-size:12px;font-family:var(--f-data);color:var(--fg);white-space:nowrap}
+.dtip b{color:var(--amber);font-weight:500}
+details.chlog{margin-top:14px;border:1px solid var(--line-soft);background:var(--panel);padding:6px 10px;font-size:12.5px;color:var(--muted)}
+details.chlog summary{cursor:pointer;font-family:var(--f-data);font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+details.chlog ul{margin:8px 0 2px;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+details.chlog li{display:grid;grid-template-columns:5.5em minmax(0,1fr);gap:8px}
+details.chlog li b{font-family:var(--f-data);font-weight:400;color:var(--amber)}
+</style>
+
+<header class="top">
+  <div class="brand">
+    <h1>DEMO&nbsp;TERMINAL</h1>
+    <div class="meta">
+      <span>PRG <b id="clock">--:--:--</b></span>
+      <span>NYSE <b id="nyclock">--:--</b> <span id="mkt">—</span></span>
+      <span class="seg" role="group" aria-label="Měna zobrazení" id="baseSeg">
+        <button type="button" data-base="CZK">CZK</button><button type="button" data-base="USD">USD</button><button type="button" data-base="EUR">EUR</button>
+      </span>
+      <span id="saveState">—</span>
+      <span id="liveState" title="Zdroj cen">CENY: RANNÍ</span>
+    </div>
+  </div>
+  <form class="cmd" id="cmdForm" autocomplete="off">
+    <label for="cmd">&gt;</label>
+    <input id="cmd" placeholder="Ticker nebo příkaz: NVDA · AI · IDEAS · IMPORT · HELP" spellcheck="false">
+    <button class="go" type="submit">GO</button>
+  </form>
+  <div class="status" id="status" role="status">Stiskni / pro příkazový řádek. HELP ukáže všechny příkazy.</div>
+  <div class="tape" aria-hidden="true"><div class="tape-inner" id="tape"></div></div>
+</header>
+
+<div class="banner" id="sampleBanner" hidden>
+  <span><b>Ukázkové portfolio.</b> Pozice, ceny i hodnocení výboru jsou ilustrativní. Nahraj export z XTB nebo začni od nuly.</span>
+  <button class="btn" type="button" id="goImport">Nahrát z XTB</button>
+  <button class="btn ghost" type="button" id="startOwn">Začít s prázdným portfoliem</button>
+</div>
+
+<main class="grid">
+  <!-- verdict -->
+  <section class="panel s4" aria-labelledby="h-verdict">
+    <div class="ph"><h2 id="h-verdict">Verdikt výboru</h2><span class="code" id="aiStamp">—</span></div>
+    <div class="pb verdict">
+      <div>
+        <div class="lbl">Vážené hodnocení portfolia</div>
+        <div class="big" id="vBig">—</div>
+        <div class="scale" id="vScale"><span style="background:var(--ss)"></span><span style="background:var(--s)"></span><span style="background:var(--h)"></span><span style="background:var(--b)"></span><span style="background:var(--sb)"></span><i class="marker" id="vMark" style="left:50%"></i></div>
+        <div class="scale-l"><span>S.SELL</span><span>SELL</span><span>HOLD</span><span>BUY</span><span>S.BUY</span></div>
+      </div>
+      <p class="vtext" id="vText">Investiční výbor zatím nezasedal.</p>
+      <div class="toolbar">
+        <button class="btn solid" type="button" id="aiRun">Svolat investiční výbor</button>
+      </div>
+      <span class="small muted" id="aiHint">Šest AI analytiků s různými strategiemi ohodnotí každou pozici.</span>
+    </div>
+  </section>
+
+  <!-- KPIs -->
+  <section class="panel s8" aria-label="Souhrn portfolia">
+    <div class="ph"><h2>Portfolio</h2><span class="code" id="kpiCode">PORT</span></div>
+    <div class="kpis" id="kpis"></div>
+  </section>
+
+  <!-- today -->
+  <section class="panel s12" id="todayPanel">
+    <div class="ph"><h2>Dnes v kostce</h2><span class="code">CO DĚLAT</span></div>
+    <div class="pb"><div class="today" id="todayTiles"></div><ul class="todo" id="todo"></ul>
+    <p class="disc">Automatický přehled podle pravidel tvého profilu, ne investiční doporučení.</p></div>
+  </section>
+
+  <!-- briefing -->
+  <section class="panel s12" id="briefPanel">
+    <div class="ph"><h2>Ranní briefing</h2><span class="code" id="briefStamp">BRIEF</span></div>
+    <div class="pb" id="brief"></div>
+  </section>
+
+  <!-- holdings -->
+  <section class="panel s12" id="holdPanel">
+    <div class="ph"><h2>Pozice a hodnocení</h2><span class="code">klikni na řádek pro detail · cenu lze přepsat</span></div>
+    <div class="tw" id="holdWrap"></div>
+  </section>
+
+  <!-- distribution donuts -->
+  <section class="panel s12" id="distPanel">
+    <div class="ph"><h2>Rozložení portfolia</h2><span class="code">MIX</span></div>
+    <div class="pb"><div class="donuts" id="donuts"></div>
+    <p class="disc">Najetím na výseč nebo řádek zvýrazníš část grafu. Malé položky jsou sloučené do „Ostatní“.</p></div>
+  </section>
+
+  <!-- detail -->
+  <section class="panel s8" id="detailPanel">
+    <div class="ph"><h2>Detail a názory výboru</h2><span class="code" id="detailCode">DES</span></div>
+    <div class="pb" id="detail"></div>
+  </section>
+
+  <!-- sectors -->
+  <section class="panel s4">
+    <div class="ph"><h2>Sektory a měny</h2><span class="code">ALLOC</span></div>
+    <div class="pb">
+      <div class="alloc" id="alloc"></div>
+      <div class="subh">Měnová expozice</div>
+      <div class="alloc" id="ccyAlloc"></div>
+    </div>
+  </section>
+
+  <!-- ideas -->
+  <section class="panel s12" id="ideasPanel">
+    <div class="ph"><h2>Co teď nakoupit</h2><span class="code">IDEAS &lt;GO&gt;</span></div>
+    <div class="pb">
+      <div class="toolbar">
+        <button class="btn solid" type="button" id="ideasRun">Najít příležitosti</button>
+        <span class="small muted">Claude vybere akcie, které by tvoje portfolio nejvíc posílily, včetně titulů s velkým hype. Profil a horizont nastavíš v panelu Profil investora.</span>
+      </div>
+      <div id="ideasOut"></div>
+      <div class="subh">Z analytických zpráv · zveřejněno 25. 9. 2026</div>
+      <div class="cards" id="pressCards"></div>
+      <p class="disc">Zdroj: <a href="https://www.wallstreetzen.com/news/4-stocks-to-buy-in-october-2026" target="_blank" rel="noopener">WallStreetZen, 4 Stocks to Buy in October 2026</a>. AI nápady vychází ze znalostí modelu, ne z dnešních kurzů a zpráv; aktuální cenu a novinky si vždy ověř.</p>
+    </div>
+  </section>
+
+  <!-- allocator -->
+  <section class="panel s12" id="allocPanel">
+    <div class="ph"><h2>Vklad na XTB</h2><span class="code">DEPO &lt;GO&gt;</span></div>
+    <div class="pb">
+      <div class="alc-ctl">
+        <label class="f" for="aAmt"><span>Částka k investici (<span id="aCcy">CZK</span>)</span><input id="aAmt" type="number" min="0" step="1000" value="20000"></label>
+        <label class="f" for="aHor">Cíl
+          <select id="aHor"><option value="dlouhodobý (5+ let)" selected>Dlouhodobý zisk (5+ let)</option><option value="střednědobý (1–5 let)">Střednědobý zisk (1–5 let)</option><option value="krátkodobý (do 1 roku)">Krátkodobě (do 1 roku)</option></select>
+        </label>
+        <label class="f" for="aMin"><span>Min. nákup (<span id="aCcy2">CZK</span>)</span><input id="aMin" type="number" min="0" step="100" value="500"></label>
+        <label class="f" for="aEtf"><span id="aEtfLbl">Cílový podíl ETF (%)</span><input id="aEtf" type="number" min="0" max="100" step="5" value="65"></label>
+        <label class="f" for="aN"><span>Max. akcií ve vkladu</span><input id="aN" type="number" min="1" max="10" step="1" value="5"></label>
+        <label class="chk" for="aIdeas"><input type="checkbox" id="aIdeas">Zahrnout nové tituly z Co teď nakoupit</label>
+        <button class="btn solid" type="button" id="aGo">Rozdělit vklad</button>
+      </div>
+      <div id="alcOut"></div>
+    </div>
+  </section>
+
+  <!-- rebalance -->
+  <section class="panel s7" id="rebalPanel">
+    <div class="ph"><h2>Rebalancování podle hodnocení</h2><span class="code">REBAL</span></div>
+    <div class="pb" id="rebal"></div>
+  </section>
+
+  <!-- risk -->
+  <section class="panel s5">
+    <div class="ph"><h2>Riziko</h2><span class="code">RISK</span></div>
+    <div class="pb"><div class="risk" id="risk"></div><ul class="notes" id="riskNotes"></ul></div>
+  </section>
+
+  <!-- projection -->
+  <section class="panel s8">
+    <div class="ph"><h2>Projekce Monte Carlo</h2><span class="code">MC · 2 000 scénářů</span></div>
+    <div class="pb">
+      <div class="mc-ctl">
+        <label class="f" for="mcYears">Horizont
+          <select id="mcYears"><option value="5">5 let</option><option value="10" selected>10 let</option><option value="20">20 let</option><option value="30">30 let</option></select>
+        </label>
+        <label class="f" for="mcMonthly"><span>Měsíční vklad (<span id="mcCcy">CZK</span>)</span>
+          <input id="mcMonthly" type="number" min="0" step="500" value="5000">
+        </label>
+      </div>
+      <svg class="chart" id="mcChart" viewBox="0 0 800 280" role="img" aria-label="Projekce hodnoty portfolia"></svg>
+      <div class="legend"><span><i style="background:rgba(255,166,43,.18)"></i>10.–90. percentil</span><span><i style="background:var(--amber);height:3px"></i>medián</span><span><i style="background:var(--muted);height:2px"></i>vloženo celkem</span></div>
+      <div class="mcstats" id="mcStats"></div>
+      <p class="disc" id="mcNote"></p>
+    </div>
+  </section>
+
+  <!-- settings -->
+  <section class="panel s4">
+    <div class="ph"><h2>Profil investora</h2><span class="code">SET</span></div>
+    <div class="pb" style="display:flex;flex-direction:column;gap:12px">
+      <label class="f" for="profile">Rizikový profil
+        <select id="profile">
+          <option value="konzervativni">Konzervativní · max 10 % na titul</option>
+          <option value="vyvazeny">Vyvážený · max 15 % na titul</option>
+          <option value="agresivni">Agresivní · max 25 % na titul</option>
+        </select>
+      </label>
+      <label class="f" for="horizon">Investiční horizont
+        <select id="horizon">
+          <option value="krátkodobý (do 1 roku)">Do 1 roku</option>
+          <option value="střednědobý (1–5 let)">1–5 let</option>
+          <option value="dlouhodobý (5+ let)">5+ let</option>
+        </select>
+      </label>
+      <div>
+        <div class="subh" style="margin-top:0" id="fxLbl">Kurzy v CZK</div>
+        <div class="fx" id="fx"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- import -->
+  <section class="panel s7" id="importPanel">
+    <div class="ph"><h2>Import z XTB</h2><span class="code">IMPORT</span></div>
+    <div class="pb">
+      <ol class="steps">
+        <li>V xStation 5 otevři <b>Historie účtu</b> (Account history).</li>
+        <li>Klikni na <b>Export</b> → <b>Nový report</b>, vyber všechny účty a vygeneruj ho.</li>
+        <li>Stažené soubory (pro každý účet jeden, ZIP nejdřív rozbal) přetáhni sem. Načtou se otevřené pozice s aktuální cenou.</li>
+      </ol>
+      <label class="drop" id="drop" for="file">
+        <b>Přetáhni exporty z XTB (.xlsx, i víc účtů najednou)</b>
+        <span class="small muted">nebo klikni a vyber soubor · soubor zůstává v tvém prohlížeči</span>
+      </label>
+      <input type="file" id="file" accept=".xlsx,.xls,.csv,.txt" multiple hidden>
+      <details class="paste">
+        <summary>Nebo vlož tabulku zkopírovanou z xStation</summary>
+        <textarea id="pasteBox" placeholder="Symbol	Volume	Open price	Market price&#10;AAPL.US	10	180.50	230.10"></textarea>
+        <button class="btn" type="button" id="pasteGo" style="margin-top:6px">Načíst vložená data</button>
+      </details>
+      <div class="prev" id="importPrev"></div>
+    </div>
+  </section>
+
+  <!-- add -->
+  <section class="panel s5">
+    <div class="ph"><h2>Přidat / upravit pozici</h2><span class="code">ADD</span></div>
+    <div class="pb">
+      <form class="fgrid" id="addForm" autocomplete="off">
+        <label class="f" for="fTk">Symbol (jako v XTB)<input id="fTk" required maxlength="16" placeholder="AAPL.US"></label>
+        <label class="f" for="fName">Název<input id="fName" maxlength="40" placeholder="Apple"></label>
+        <label class="f" for="fQty">Kusy<input id="fQty" type="number" step="any" min="0" required placeholder="10"></label>
+        <label class="f" for="fCost">Prům. nákupní cena<input id="fCost" type="number" step="any" min="0" required placeholder="150"></label>
+        <label class="f" for="fPx">Aktuální cena<input id="fPx" type="number" step="any" min="0" placeholder="= nákupní"></label>
+        <label class="f" for="fCcy">Měna<select id="fCcy"></select></label>
+        <label class="f w2" for="fSec">Sektor<select id="fSec"></select></label>
+        <button class="go w2" type="submit" style="padding:8px">ULOŽIT POZICI</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- help -->
+  <section class="panel s12" id="helpPanel">
+    <div class="ph"><h2>Příkazy</h2><span class="code">HELP</span></div>
+    <div class="pb help">
+      <b>NVDA</b><span>otevře detail pozice</span>
+      <b>AI</b><span>svolá investiční výbor (hodnocení všech pozic)</span>
+      <b>IDEAS</b><span>najde nové nákupní příležitosti</span>
+      <b>IMPORT</b><span>přejde na import z XTB</span>
+      <b>DEPO 20000</b><span>rozdělí vklad mezi tituly podle modelu</span>
+      <b>ADD MSFT.US 5 410 [CENA]</b><span>přikoupí kusy za nákupní cenu (volitelně aktuální cena)</span>
+      <b>PX NVDA 182.5</b><span>nastaví aktuální cenu</span>
+      <b>DEL KO</b><span>smaže pozici</span>
+      <b>CCY CZK | USD | EUR</b><span>měna zobrazení</span>
+      <b>SORT VALUE | PL | PLPCT | WEIGHT | RATING</b><span>seřadí tabulku</span>
+      <b>RESET</b><span>vrátí ukázkové portfolio</span>
+    </div>
+  </section>
+</main>
+<details class="chlog" id="novinky">
+  <summary>O této ukázce</summary>
+  <ul>
+    <li><b>Demo</b><span>Ukázková verze osobního akciového terminálu. Pozice, ceny i hodnocení jsou smyšlené. Můžeš nahrát vlastní export z XTB nebo přidat pozice ručně – data zůstanou jen v tvém prohlížeči, nikam se neodesílají.</span></li>
+  </ul>
+</details>
+<p class="foot">Hodnocení a nápady jsou vzdělávací pomůcka, ne investiční doporučení. V demu se ceny neobnovují automaticky, můžeš je přepsat ručně v tabulce.</p>
+
+<script>
+(() => {
+"use strict";
+/* ================= constants ================= */
+const SECTORS = ["Technologie","Komunikace","Spotřební zboží","Základní spotřeba","Finance","Zdravotnictví","Energie","Průmysl","Materiály","Utility","Nemovitosti","ETF / index","Jiné"];
+const FX_DEFAULT = {CZK:1, USD:21.795, EUR:24.465, GBP:28.768, PLN:5.588, CHF:26.362};
+const SUFFIX_CCY = {US:"USD",CZ:"CZK",DE:"EUR",FR:"EUR",NL:"EUR",IT:"EUR",ES:"EUR",BE:"EUR",PT:"EUR",FI:"EUR",IE:"EUR",AT:"EUR",UK:"GBP",PL:"PLN",CH:"CHF",DK:"DKK",SE:"SEK",NO:"NOK"};
+const RATINGS = [
+  {k:"ss",l:"STRONG SELL",c:"var(--ss)"},{k:"s",l:"SELL",c:"var(--s)"},{k:"h",l:"HOLD",c:"var(--h)"},
+  {k:"b",l:"BUY",c:"var(--b)"},{k:"sb",l:"STRONG BUY",c:"var(--sb)"}];
+const PERSONAS = [
+  {k:"street",n:"Konsenzus analytiků",d:"sell-side analytici bank: podíl doporučení Buy, cílové ceny, revize"},
+  {k:"value",n:"Hodnotový investor",d:"Graham/Buffett: P/E, P/FCF, EV/EBITDA vůči historii a sektoru, bezpečnostní polštář"},
+  {k:"growth",n:"Růstový investor",d:"GARP/Lynch: růst tržeb a EPS, PEG, velikost trhu, revize odhadů"},
+  {k:"quality",n:"Kvalita a příkop",d:"ROIC, marže, konkurenční výhoda, rozvaha, alokace kapitálu"},
+  {k:"momentum",n:"Momentum a sentiment",d:"trend 12M, relativní síla, revize zisků, hype a pozornost investorů"},
+  {k:"risk",n:"Risk manažer",d:"zda pozice sedí do tohoto portfolia: koncentrace, beta, korelace"}];
+const PROFILE = {konzervativni:{cap:10,n:"konzervativní"},vyvazeny:{cap:15,n:"vyvážený"},agresivni:{cap:25,n:"agresivní"}};
+const MULT = {sb:1.35,b:1.15,h:1,s:0.6,ss:0};
+
+const SAMPLE_H = [
+  {sym:"NVDA.US",n:"NVIDIA",s:"Technologie",ccy:"USD",q:40,c:45,p:175,b:1.7,d:0},
+  {sym:"AAPL.US",n:"Apple",s:"Technologie",ccy:"USD",q:25,c:150,p:230,b:1.2,d:0.5},
+  {sym:"MSFT.US",n:"Microsoft",s:"Technologie",ccy:"USD",q:12,c:280,p:430,b:0.9,d:0.7},
+  {sym:"GOOGL.US",n:"Alphabet A",s:"Komunikace",ccy:"USD",q:20,c:110,p:190,b:1.05,d:0.4},
+  {sym:"AMZN.US",n:"Amazon",s:"Spotřební zboží",ccy:"USD",q:15,c:130,p:220,b:1.3,d:0},
+  {sym:"JPM.US",n:"JPMorgan Chase",s:"Finance",ccy:"USD",q:10,c:140,p:290,b:1.1,d:1.9},
+  {sym:"PFE.US",n:"Pfizer",s:"Zdravotnictví",ccy:"USD",q:50,c:38,p:25,b:0.6,d:6.5},
+  {sym:"KO.US",n:"Coca-Cola",s:"Základní spotřeba",ccy:"USD",q:30,c:58,p:70,b:0.6,d:2.9},
+  {sym:"XOM.US",n:"Exxon Mobil",s:"Energie",ccy:"USD",q:15,c:105,p:112,b:0.9,d:3.4},
+  {sym:"CEZ.CZ",n:"ČEZ",s:"Utility",ccy:"CZK",q:20,c:780,p:1050,b:0.6,d:5.0},
+  {sym:"VWCE.DE",n:"Vanguard FTSE All-World",s:"ETF / index",ccy:"EUR",q:15,c:105,p:140,b:1.0,d:0}
+];
+const SP = (street,value,growth,quality,momentum,risk) => ({street,value,growth,quality,momentum,risk});
+const SAMPLE_AI = {
+  at:"ukázka", sample:true,
+  souhrn:"Kvalitní, ale technologicky zatížené portfolio. Výbor vidí nejvíc potenciálu v Alphabetu, Microsoftu a Amazonu. U NVIDIE doporučuje držet, ale hlídat váhu. Pfizer je jediný kandidát na prodej.",
+  rizika:["Technologie a komunikace tvoří přes polovinu hodnoty.","NVIDIA je největší pozice s nejvyšší betou portfolia."],
+  results:{
+    "NVDA.US":{sk:SP(2,-1,2,2,1,-1),teze:"Lídr v čipech pro AI datová centra s dominantním softwarovým ekosystémem CUDA.",riziko:"Vysoké ocenění a cykličnost investic hyperscalerů; v portfoliu už má velkou váhu.",kat:"Výsledky a výhled investic do AI infrastruktury."},
+    "AAPL.US":{sk:SP(1,-1,0,2,0,0),teze:"Silná značka, služby s vysokou marží a masivní zpětné odkupy.",riziko:"Pomalý růst tržeb při prémiovém ocenění.",kat:"Cyklus upgradů iPhonu a AI funkce."},
+    "MSFT.US":{sk:SP(2,0,1,2,1,1),teze:"Azure a podnikový software těží z nasazování AI, stabilní cash flow.",riziko:"Velké kapitálové výdaje na datová centra tlačí na marže.",kat:"Růst Azure a monetizace Copilotu."},
+    "GOOGL.US":{sk:SP(2,1,1,2,2,1),teze:"Vyhledávání, YouTube a Cloud za rozumnější násobek než ostatní megacapy.",riziko:"Regulace a tlak AI chatbotů na vyhledávání.",kat:"Marže Google Cloud a regulatorní verdikty."},
+    "AMZN.US":{sk:SP(2,0,2,1,1,1),teze:"AWS a reklama táhnou ziskovost, e-commerce zlepšuje marže.",riziko:"Investice do AI a logistiky mohou zpomalit volné cash flow.",kat:"Zrychlení růstu AWS."},
+    "JPM.US":{sk:SP(1,0,0,2,1,0),teze:"Nejlépe řízená americká banka s vysokou návratností kapitálu.",riziko:"Úvěrový cyklus a pokles úrokových marží.",kat:"Čtvrtletní výsledky a regulace kapitálu."},
+    "PFE.US":{sk:SP(0,1,-1,-1,-2,-1),teze:"Levná na papíře s vysokou dividendou.",riziko:"Expirace patentů a slabý růst; dlouhodobý sestupný trend.",kat:"Výsledky pipeline a úsporný program."},
+    "KO.US":{sk:SP(0,0,-1,2,0,1),teze:"Defenzivní značka se stabilní dividendou, tlumí výkyvy portfolia.",riziko:"Nízký růst a citlivost na silný dolar.",kat:"Cenová síla vs. objemy."},
+    "XOM.US":{sk:SP(0,1,-1,1,-1,0),teze:"Silná rozvaha a dividenda, zajištění proti inflaci.",riziko:"Závislost na ceně ropy.",kat:"Vývoj ceny ropy a OPEC+."},
+    "CEZ.CZ":{sk:SP(0,1,-1,1,0,1),teze:"Vysoká dividenda a česká korunová složka portfolia.",riziko:"Politická a regulatorní rizika, budoucnost vlastnické struktury.",kat:"Rozhodnutí státu o struktuře firmy, dividendová politika."},
+    "VWCE.DE":{sk:SP(1,1,1,1,1,2),teze:"Globální diverzifikace přes tisíce firem za nízký poplatek.",riziko:"Kopíruje trh, při poklesu klesá s ním.",kat:"Pravidelné dokupování."}
+  }
+};
+const PRESS = [
+  {t:"SNDK",n:"SanDisk",r:"sb",info:"Strong Buy · 15 analytiků",p:"Zisky v posledním kvartálu téměř dvojnásobné; paměti jako páteř AI boomu. Upside podle JP Morgan 40 %, podle Susquehanna téměř 100 %."},
+  {t:"ATRO",n:"Astronics",r:"sb",info:"Strong Buy",p:"Zisk +35 % meziročně, očekávaný růst přes 40 %. Těží z obranných rozpočtů a obnovy flotil aerolinek. Upside 50 % (TD Cowen)."},
+  {t:"OSCR",n:"Oscar Health",r:"sb",info:"Strong Buy",p:"Po letech ztrát se dostala do zisku, tržby rostou kolem 40 % ročně díky vlastní technologické platformě."},
+  {t:"YPF",n:"YPF",r:"sb",info:"Strong Buy",p:"Akcie se za rok zdvojnásobila; těží z otevírání argentinského ložiska Vaca Muerta. Zisk se má obrátit ze ztráty na 1,50 USD na akcii."}
+];
+
+/* ================= state ================= */
+const clone = x => JSON.parse(JSON.stringify(x));
+function freshSample(){ return {holdings:clone(SAMPLE_H), isSample:true, base:"CZK", fx:{...FX_DEFAULT}, profile:"vyvazeny", horizon:"dlouhodobý (5+ let)", ai:{committee:clone(SAMPLE_AI), ideas:null}}; }
+let state = freshSample();
+let sortKey = "value", sortDir = -1, selected = "NVDA.US";
+let docRef = null, saveTimer = null, saving = false, pendingSave = false, sampleFn = null;
+let aiBusy = false, ideasBusy = false, importRows = null;
+let live = {}, liveFx = {};  /* živé ceny jen pro zobrazení, nikdy se neukládají */
+
+function normalize(s){
+  const o = Object.assign(freshSample(), s||{});
+  o.fx = Object.assign({...FX_DEFAULT}, o.fx||{});
+  o.brief = (s && s.brief) || null; o.history = Array.isArray(s?.history) ? s.history : [];
+  o.ai = (s && s.ai) ? Object.assign({committee:null, ideas:null}, s.ai) : (o.isSample ? {committee:clone(SAMPLE_AI), ideas:null} : {committee:null, ideas:null});
+  o.holdings = (o.holdings||[]).map(h => {
+    const sym = String(h.sym || h.t || "").toUpperCase();
+    return {sym, n:h.n||tick(sym), s:SECTORS.includes(h.s)?h.s:"Jiné", ccy:h.ccy||ccyOf(sym), q:+h.q||0, c:+h.c||0, p:+(h.p ?? h.c)||0, b:h.b!=null?+h.b:null, d:h.d!=null?+h.d:null};
+  }).filter(h=>h.sym);
+  return o;
+}
+
+/* ================= helpers ================= */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt = (v,d=2) => Number(v).toLocaleString("cs-CZ",{minimumFractionDigits:d,maximumFractionDigits:d});
+const pct = (v,d=1) => (v>0?"+":"")+fmt(v,d)+" %";
+const cls = v => v>0.0001?"up":v<-0.0001?"down":"muted";
+function tick(sym){ return String(sym).split(".")[0]; }
+function ccyOf(sym){ const m = String(sym).toUpperCase().match(/\.([A-Z]{2})$/); return m ? (SUFFIX_CCY[m[1]]||"USD") : "USD"; }
+function money(v, ccy=state.base, d=0){
+  try { return new Intl.NumberFormat("cs-CZ",{style:"currency",currency:ccy,minimumFractionDigits:d,maximumFractionDigits:d}).format(v); }
+  catch(e){ return fmt(v,d)+" "+ccy; }
+}
+function compact(v, ccy=state.base){
+  try { return new Intl.NumberFormat("cs-CZ",{style:"currency",currency:ccy,notation:"compact",maximumFractionDigits:1}).format(v); }
+  catch(e){ return fmt(v,0)+" "+ccy; }
+}
+const fxOf = c => liveFx[c] || state.fx[c];
+const toBase = (v, ccy) => { const r = fxOf(ccy), b = fxOf(state.base); return r && b ? v*r/b : 0; };
+function ratingOf(score){ if (score==null || isNaN(score)) return null; return score>=1.5?RATINGS[4]:score>=0.5?RATINGS[3]:score>-0.5?RATINGS[2]:score>-1.5?RATINGS[1]:RATINGS[0]; }
+function pill(r){ return r ? `<span class="rt rt-${r.k}">${r.l}</span>` : `<span class="rt rt-none">NEHODNOCENO</span>`; }
+function scoreColor(v){ return v>=1.5?"var(--sb)":v>=0.5?"var(--b)":v>-0.5?"var(--h)":v>-1.5?"var(--s)":"var(--ss)"; }
+function ratingFromLabel(l){ const u = String(l||"").toUpperCase().replace(/[_-]/g," ").trim(); return RATINGS.find(r=>r.l===u) || null; }
+
+/* ================= calculations ================= */
+function committeeFor(h){
+  const c = state.ai.committee; if (!c || !c.results) return null;
+  const r = c.results[h.sym] || c.results[tick(h.sym)];
+  if (!r || !r.sk) return null;
+  const vals = PERSONAS.map(p=>+r.sk[p.k]).filter(v=>!isNaN(v));
+  if (!vals.length) return null;
+  const score = vals.reduce((a,b)=>a+b,0)/vals.length;
+  const upside = r.kons && +r.kons.cil > 0 && h.p ? (+r.kons.cil/h.p - 1)*100 : null;
+  const prev = r.prev!=null && !isNaN(+r.prev) ? ratingOf(+r.prev) : null;
+  return {...r, score, rating:ratingOf(score), upside, prevRating:prev, model:(hz)=>modelScore(r.sk, upside, hz)};
+}
+const HW = {
+  "krátkodobý (do 1 roku)":{momentum:.35,street:.3,growth:.15,value:.05,quality:.05,risk:.1},
+  "střednědobý (1–5 let)":{street:.25,momentum:.25,growth:.2,quality:.1,value:.1,risk:.1},
+  "dlouhodobý (5+ let)":{quality:.25,value:.2,growth:.2,street:.15,momentum:.05,risk:.15}};
+function modelScore(sk, upside, hz){
+  const w = HW[hz] || HW["střednědobý (1–5 let)"]; let v = 0;
+  for (const k in w) v += w[k]*(+sk?.[k]||0);
+  if (upside!=null && isFinite(upside)) v += Math.max(-.5, Math.min(.5, upside/30));
+  return v;
+}
+function flagOf(r){
+  const etf = r.s==="ETF / index";
+  if (etf) return r.plp < -25 ? {k:"review",l:"ZTRÁTA >25 %"} : {k:"ok",l:"—"};
+  const cap = PROFILE[state.profile]?.cap || 15, gw = r.gw ?? r.w;
+  if (gw > cap) return {k:"trim",l:`NAD STROPEM ${cap} %`};
+  if (r.plp > 100 && gw > 12) return {k:"take",l:"VYBRAT ZISK?"};
+  if (r.plp < -25) return {k:"review",l:"ZTRÁTA >25 %"};
+  if (r.w < 2) return {k:"small",l:"MALÁ POZICE"};
+  return {k:"ok",l:"—"};
+}
+function calc(){
+  const rows = state.holdings.map(h => {
+    const L = live[h.sym], p = L ? L.p : h.p;
+    const value = toBase(h.q*p, h.ccy), cost = toBase(h.q*h.c, h.ccy);
+    const day = L && L.prev ? (p/L.prev-1)*100 : null, dayV = L && L.prev ? toBase(h.q*(p-L.prev), h.ccy) : 0;
+    return {...h, p, live:!!L, day, dayV, t:tick(h.sym), value, cost, pl:value-cost, plp: h.c? (p-h.c)/h.c*100 : 0, fxMissing: !fxOf(h.ccy)};
+  });
+  const total = rows.reduce((a,r)=>a+r.value,0), cost = rows.reduce((a,r)=>a+r.cost,0);
+  const bySector = {}, byCcy = {};
+  rows.forEach(r => { r.w = total? r.value/total*100 : 0; });
+  const byT = {}; rows.filter(r=>r.s!=="ETF / index").forEach(r=>{ byT[r.t] = (byT[r.t]||0) + r.w; });
+  rows.forEach(r => { r.gw = byT[r.t] ?? r.w; r.flag = flagOf(r); r.ai = committeeFor(r);
+    bySector[r.s] = (bySector[r.s]||0)+r.w; byCcy[r.ccy] = (byCcy[r.ccy]||0)+r.w; });
+  const beta = rows.reduce((a,r)=>a+(r.w/100)*(r.b ?? 1),0);
+  const yld = rows.reduce((a,r)=>a+(r.w/100)*(r.d ?? 0),0);
+  const hhi = rows.reduce((a,r)=>a+(r.w/100)**2,0);
+  const byW = Object.entries(byT).map(([t,w])=>({t,w})).sort((a,b)=>b.w-a.w);
+  const rated = rows.filter(r=>r.ai);
+  const ratedW = rated.reduce((a,r)=>a+r.w,0);
+  const pScore = ratedW ? rated.reduce((a,r)=>a+r.w*r.ai.score,0)/ratedW : null;
+  const best = [...rows].sort((a,b)=>b.plp-a.plp)[0], worst = [...rows].sort((a,b)=>a.plp-b.plp)[0];
+  const dayPL = rows.reduce((a,r)=>a+r.dayV,0), liveN = rows.filter(r=>r.live).length;
+  return {dayPL,liveN,rows,total,cost,pl:total-cost,plp:cost?(total-cost)/cost*100:0,bySector,byCcy,beta,yld,hhi,effN:hhi?1/hhi:0,top1:byW[0]?.w||0,top5:byW.slice(0,5).reduce((a,r)=>a+r.w,0),top1n:byW[0]?.t||"",etfW:rows.filter(r=>r.s==="ETF / index").reduce((a,r)=>a+r.w,0),pScore,rated:rated.length,best,worst};
+}
+
+/* ================= render ================= */
+function render(){
+  const m = calc();
+  $("sampleBanner").hidden = !state.isSample;
+  document.querySelectorAll("#baseSeg button").forEach(b=>b.setAttribute("aria-pressed", String(b.dataset.base===state.base)));
+  $("profile").value = state.profile; $("horizon").value = state.horizon; $("mcCcy").textContent = state.base;
+  renderVerdict(m); renderKpis(m); renderToday(m); renderBrief(m); $("aCcy").textContent = $("aCcy2").textContent = state.base; renderTable(m); renderDonuts(m); renderDetail(m); renderAlloc(m); renderIdeas(); renderRebal(m); renderRisk(m); renderFx(m); renderMC(m); renderTape(m); renderAllocation();
+}
+function renderVerdict(m){
+  const c = state.ai.committee;
+  const r = ratingOf(m.pScore);
+  $("vBig").innerHTML = r ? `<span style="color:${r.c}">${r.l}</span>` : `<span class="muted">—</span>`;
+  $("vMark").style.left = r ? `${((m.pScore+2)/4)*100}%` : "50%";
+  $("vMark").style.opacity = r ? 1 : .25;
+  $("vText").textContent = c?.souhrn || "Investiční výbor zatím nezasedal. Spusť ho a každá pozice dostane hodnocení od STRONG SELL po STRONG BUY.";
+  $("aiStamp").textContent = !c ? "—" : c.sample ? "UKÁZKOVÝ VÝSTUP" : (c.auto ? "RANNÍ AKTUALIZACE " : "ZASEDÁNÍ ") + new Date(c.at).toLocaleString("cs-CZ",{day:"numeric",month:"numeric",hour:"2-digit",minute:"2-digit"});
+}
+function spark(hist){
+  const h = (hist||[]).filter(x=>x && +x.v>0).slice(-120); if (h.length<2) return "";
+  const W=600,H=70,P=4, vs=h.map(x=>+x.v), mn=Math.min(...vs), mx=Math.max(...vs), rg=(mx-mn)||1;
+  const pts = vs.map((v,i)=>[P+(W-2*P)*i/(vs.length-1), P+(H-2*P)*(1-(v-mn)/rg)]);
+  const d = pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+","+p[1].toFixed(1)).join("");
+  const up = vs[vs.length-1]>=vs[0];
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Vývoj hodnoty portfolia"><path d="${d}L${W-P},${H}L${P},${H}Z" fill="${up?"rgba(54,209,122,.12)":"rgba(255,90,79,.12)"}"/><path d="${d}" fill="none" stroke="${up?"var(--up)":"var(--down)"}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
+  <div class="small muted num" style="display:flex;justify-content:space-between"><span>${esc(h[0].d)}</span><span>${esc(money(vs[vs.length-1],"CZK"))} · ${pct((vs[vs.length-1]/vs[0]-1)*100)}</span><span>${esc(h[h.length-1].d)}</span></div>`;
+}
+function renderBrief(m){
+  const b = state.brief;
+  const changes = m.rows.filter(r=>r.ai && r.ai.prevRating && r.ai.prevRating.k!==r.ai.rating.k);
+  $("briefStamp").textContent = b?.at ? "AKTUALIZACE " + new Date(b.at).toLocaleString("cs-CZ",{day:"numeric",month:"numeric",hour:"2-digit",minute:"2-digit"}) : "BRIEF";
+  if (!b){
+    $("brief").innerHTML = `<div class="empty" style="margin-top:0">V plné verzi sem každý všední den ráno automaticky přibude briefing: vývoj trhů, zprávy k pozicím, nové ceny a přepočítané hodnocení STRONG BUY až STRONG SELL. V demu je tato část vypnutá.</div>`;
+    return;
+  }
+  const items = Array.isArray(b.zpravy) ? b.zpravy : [];
+  $("brief").innerHTML = `<div class="brief">
+    <div><p class="mk">${esc(b.trh||"")}</p>
+      <ul class="news">${items.map(x=>`<li><span class="t ${+x.dopad>0?"pos":+x.dopad<0?"neg":""}">${esc(tick(x.sym||""))}</span><span>${esc(x.text||"")}${x.url?` <a href="${esc(x.url)}" target="_blank" rel="noopener">zdroj ↗</a>`:""}</span></li>`).join("") || `<li class="muted">Žádné významné zprávy.</li>`}</ul>
+    </div>
+    <div>
+      <div class="subh" style="margin-top:0">Změny hodnocení od minula</div>
+      <div class="chg">${changes.length ? changes.map(r=>`<div><b class="amber num">${esc(r.t)}</b>${pill(r.ai.prevRating)}<span class="muted">→</span>${pill(r.ai.rating)}</div>`).join("") : `<span class="muted small">Beze změn.</span>`}</div>
+      <div class="subh">Vývoj hodnoty portfolia</div>
+      ${spark(state.history) || `<span class="muted small">Graf se začne kreslit po několika ranních aktualizacích.</span>`}
+    </div></div>`;
+}
+function upcoming(m){
+  const now = new Date(); const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const out = [];
+  m.rows.forEach(r=>{ const txt = (r.ai?.kat||"") + " " + (r.ai?.zpravy||"");
+    const re = /(\d{1,2})\.\s?(\d{1,2})\./g; let x, best = null;
+    while ((x = re.exec(txt))){ const d = +x[1], mo = +x[2]; if (d<1||d>31||mo<1||mo>12) continue;
+      let dt = new Date(now.getFullYear(), mo-1, d); if (dt < t0 - 60*864e5) dt = new Date(now.getFullYear()+1, mo-1, d);
+      const days = Math.round((dt - t0)/864e5); if (days>=0 && days<=14 && (!best || days<best.days)) best = {days, dt}; }
+    if (best && !out.some(o=>o.t===r.t)) out.push({t:r.t, ...best}); });
+  return out.sort((a,b)=>a.days-b.days);
+}
+function renderToday(m){
+  const cap = PROFILE[state.profile]?.cap || 15;
+  const cnt = {sb:0,b:0,h:0,s:0,ss:0}; m.rows.forEach(r=>{ if (r.ai) cnt[r.ai.rating.k]++; });
+  const tiles = [
+    ["Dnes", m.liveN ? `${m.dayPL>=0?"+":""}${money(m.dayPL)}` : "—", m.liveN ? `${pct(m.total-m.dayPL ? m.dayPL/(m.total-m.dayPL)*100 : 0, 2)} · ${m.liveN} živých cen` : "živé ceny jen při otevřené burze USA", m.liveN ? cls(m.dayPL) : "muted"],
+    ["ETF jádro", fmt(m.etfW,0)+" %", `cíl ${allocSettings().etf} % · zbytek akcie`, "amber"],
+    ["Největší firma", m.top1n || "—", m.top1n ? fmt(m.top1,1)+" % (všechny kotace)" : "", m.top1>cap ? "down" : ""],
+    ["Hodnocení", `${cnt.sb+cnt.b} · ${cnt.h} · ${cnt.s+cnt.ss}`, "BUY · HOLD · SELL", ""]
+  ];
+  $("todayTiles").innerHTML = tiles.map(([l,v,h,c])=>`<div class="rk"><div class="l">${l}</div><div class="v num ${c}">${esc(v)}</div><div class="h">${esc(h)}</div></div>`).join("");
+  const todo = [];
+  const over = Object.entries(m.rows.reduce((a,r)=>{ if (r.s!=="ETF / index") a[r.t]=r.gw; return a; },{})).filter(([t,w])=>w>cap);
+  over.forEach(([t,w])=>todo.push(["wa","!",`${t} má ${fmt(w,1)} % portfolia, víc než strop ${cap} % pro tvůj profil. Nové peníze sem neposílej.`]));
+  m.rows.filter(r=>r.ai && (r.ai.rating.k==="s"||r.ai.rating.k==="ss")).forEach(r=>todo.push(["wa","!",`${r.t} má hodnocení ${r.ai.rating.l}. Zkontroluj, jestli ještě platí důvod, proč ho držíš.`]));
+  const ch = m.rows.filter(r=>r.ai && r.ai.prevRating && r.ai.prevRating.k!==r.ai.rating.k);
+  if (ch.length) todo.push(["in","i",`Změna hodnocení od minula: ${ch.map(r=>`${r.t} ${r.ai.prevRating.l} → ${r.ai.rating.l}`).join(", ")}.`]);
+  const tgt = allocSettings().etf; if (m.etfW < tgt - 1) todo.push(["in","i",`Podíl ETF ${fmt(m.etfW,0)} % je pod cílem ${tgt} %. Měsíční vklad posílej hlavně do ETF, panel Vklad na XTB to rozdělí sám (DEPO 20000).`]);
+  const up = upcoming(m);
+  if (up.length) todo.push(["in","i",`Do 14 dní výsledky nebo události: ${up.map(u=>`${u.t} (${u.dt.getDate()}. ${u.dt.getMonth()+1}.)`).join(", ")}. Před výsledky neobchoduj ukvapeně.`]);
+  if (!todo.some(x=>x[0]==="wa")) todo.unshift(["ok","✓","Dnes není potřeba nic dělat. Drž plán a nové peníze posílej hlavně do ETF jádra."]);
+  else todo.push(["ok","✓","Ostatní pozice jsou v pořádku, žádný další krok není potřeba."]);
+  $("todo").innerHTML = todo.map(([k,ic,t])=>`<li><span class="ic ${k}">${ic}</span><span>${esc(t)}</span></li>`).join("");
+}
+function renderKpis(m){
+  const k = [
+    ["Hodnota portfolia", money(m.total), m.liveN ? `dnes ${m.dayPL>=0?"+":""}${money(m.dayPL)} (${pct(m.total-m.dayPL ? m.dayPL/(m.total-m.dayPL)*100 : 0, 2)}) · ${m.liveN} živě` : `${m.rows.length} pozic`, m.liveN ? cls(m.dayPL) : ""],
+    ["Investováno", money(m.cost), "v nákupních cenách", ""],
+    ["Zisk / ztráta", money(m.pl), pct(m.plp), cls(m.pl)],
+    ["Nejlepší pozice", m.best?m.best.t:"—", m.best?pct(m.best.plp):"", m.best?cls(m.best.plp):""],
+    ["Nejhorší pozice", m.worst?m.worst.t:"—", m.worst?pct(m.worst.plp):"", m.worst?cls(m.worst.plp):""],
+    ["Beta · div. výnos", `${fmt(m.beta,2)} · ${fmt(m.yld,1)} %`, m.beta>1.15?"agresivnější než trh":m.beta<0.85?"defenzivnější než trh":"blízko trhu", ""]
+  ];
+  $("kpis").innerHTML = k.map(([l,v,s,c],i)=>`<div class="kpi"><div class="l">${l}</div><div class="v ${i===2?c:(i===3||i===4)?"amber":""}">${esc(v)}</div><div class="s ${c||"muted"}">${esc(s)}</div></div>`).join("");
+  $("kpiCode").textContent = `PORT · ${state.base}`;
+}
+/* Potenciál = (průměrná cílová cena analytiků / aktuální cena − 1) */
+const COLS = [
+  ["ticker","Ticker","l"],["name","Název","l"],["q","Kusy",""],["c","Nákup",""],["p","Cena",""],["day","Dnes",""],["value","Hodnota",""],["weight","Váha",""],["pl","Z/Z",""],["plpct","Z/Z %",""],["upside","Potenciál",""],["rating","Hodnocení","c"],["committee","Výbor","c"],["flag","Upozornění","c"],["x","",""]];
+function renderTable(m){
+  const key = {ticker:r=>r.t,name:r=>r.n,q:r=>r.q,c:r=>r.c,p:r=>r.p,day:r=>r.day??-999,value:r=>r.value,weight:r=>r.w,pl:r=>r.pl,plpct:r=>r.plp,upside:r=>r.ai?.upside ?? -999,rating:r=>r.ai?r.ai.score:-9,committee:r=>r.ai?r.ai.score:-9,flag:r=>r.flag.k}[sortKey]||(r=>r.value);
+  const rows = [...m.rows].sort((a,b)=>{const A=key(a),B=key(b);return (A>B?1:A<B?-1:0)*sortDir;});
+  const maxW = Math.max(1,...m.rows.map(r=>r.w));
+  const head = COLS.map(([k,l,a])=>`<th data-k="${k}" class="${a} ${k===sortKey?"sorted":""}">${l}${k===sortKey?(sortDir>0?" ▲":" ▼"):""}</th>`).join("");
+  const body = rows.map(r=>{
+    const dots = r.ai ? `<span class="dots" title="${PERSONAS.map(p=>p.n+": "+(r.ai.sk[p.k]>0?"+":"")+r.ai.sk[p.k]).join(" · ")}">${PERSONAS.map(p=>`<i style="background:${scoreColor(+r.ai.sk[p.k])}"></i>`).join("")}</span>` : `<span class="muted">—</span>`;
+    return `<tr data-s="${esc(r.sym)}" class="${r.sym===selected?"sel":""}">
+    <td class="l tk">${esc(r.t)}<small>${esc(r.sym.slice(r.t.length))}</small></td><td class="l nm" title="${esc(r.n)}">${esc(r.n)}</td>
+    <td>${fmt(r.q, r.q%1?2:0)}</td><td>${fmt(r.c)}</td>
+    <td><input class="cell" type="number" step="any" min="0" value="${r.p}" data-px="${esc(r.sym)}" aria-label="Cena ${esc(r.t)}"><span class="ccy">${r.ccy}</span>${r.live?`<span class="lv" title="Živá cena · Twelve Data">●</span>`:""}</td>
+    <td class="${r.day==null?"muted":cls(r.day)}">${r.day==null?"—":pct(r.day,2)}</td>
+    <td>${r.fxMissing?`<span class="down" title="Chybí kurz ${r.ccy}">kurz?</span>`:money(r.value)}</td>
+    <td>${fmt(r.w,1)} %<span class="wbar" style="width:${Math.round(r.w/maxW*36)}px"></span></td>
+    <td class="${cls(r.pl)}">${money(r.pl)}</td><td class="${cls(r.plp)}">${pct(r.plp)}</td>
+    <td class="${r.ai?.upside==null?"muted":cls(r.ai.upside)}" title="Potenciál k průměrné cílové ceně analytiků">${r.ai?.upside==null?"—":pct(r.ai.upside,0)}</td>
+    <td class="c">${pill(r.ai?.rating)}${r.ai?.prevRating && r.ai.prevRating.k!==r.ai.rating.k ? `<span class="arr ${RATINGS.indexOf(r.ai.rating)>RATINGS.indexOf(r.ai.prevRating)?"up":"down"}" title="Dříve ${r.ai.prevRating.l}">${RATINGS.indexOf(r.ai.rating)>RATINGS.indexOf(r.ai.prevRating)?"▲":"▼"}</span>`:""}</td><td class="c">${dots}</td>
+    <td class="c"><span class="flag f-${r.flag.k}">${r.flag.l}</span></td>
+    <td><button class="x" type="button" data-del="${esc(r.sym)}" aria-label="Smazat ${esc(r.t)}">✕</button></td></tr>`;}).join("");
+  const foot = `<tr><td class="l">CELKEM</td><td></td><td></td><td></td><td></td><td class="${m.liveN?cls(m.dayPL):""}">${m.liveN?(m.dayPL>=0?"+":"")+money(m.dayPL):""}</td><td>${money(m.total)}</td><td>100 %</td><td class="${cls(m.pl)}">${money(m.pl)}</td><td class="${cls(m.plp)}">${pct(m.plp)}</td><td></td><td class="c">${pill(ratingOf(m.pScore))}</td><td></td><td></td><td></td></tr>`;
+  $("holdWrap").innerHTML = m.rows.length
+    ? `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody><tfoot>${foot}</tfoot></table>`
+    : `<div class="pb muted">Portfolio je prázdné. Nahraj export z XTB, nebo přidej první pozici ručně.</div>`;
+}
+function renderDetail(m){
+  const r = m.rows.find(x=>x.sym===selected) || m.rows[0];
+  if (!r){ $("detail").innerHTML = `<span class="muted">Vyber pozici v tabulce.</span>`; $("detailCode").textContent="DES"; return; }
+  selected = r.sym;
+  $("detailCode").textContent = `${r.sym} · DES`;
+  const cells = [
+    ["Kusy", fmt(r.q, r.q%1?2:0)], ["Prům. nákup", fmt(r.c)+" "+r.ccy], ["Aktuální cena", fmt(r.p)+" "+r.ccy], ["Hodnota", money(r.value)],
+    ["Váha", fmt(r.w,1)+" %"], ["Zisk / ztráta", `<span class="${cls(r.pl)}">${money(r.pl)} (${pct(r.plp)})</span>`], ["Beta", r.b!=null?fmt(r.b,2):"—"], ["Div. výnos", r.d!=null?fmt(r.d,1)+" %":"—"]];
+  const ai = r.ai;
+  const bars = PERSONAS.map(p=>{
+    const v = ai ? +ai.sk[p.k] : null;
+    const bar = v==null||isNaN(v) ? "" : v>=0 ? `<i style="left:50%;width:${v/2*50}%;background:${scoreColor(v)}"></i>` : `<i style="right:50%;width:${-v/2*50}%;background:${scoreColor(v)}"></i>`;
+    return `<div class="pbar" title="${esc(p.d)}"><span class="n">${p.n}</span><div class="dv">${bar}</div><span class="sc" style="color:${v==null?"var(--faint)":scoreColor(v)}">${v==null||isNaN(v)?"—":(v>0?"+":"")+v}</span></div>`;}).join("");
+  const sfx = (r.sym.match(/\.([A-Z]{2})$/)||[])[1]||"";
+  const ysfx = {NL:".AS",DE:".DE",UK:".L",FR:".PA",IT:".MI",ES:".MC",PL:".WA",CZ:".PR",CH:".SW"}[sfx] || "";
+  const q = encodeURIComponent(r.t), qy = encodeURIComponent(r.t + ysfx);
+  $("detail").innerHTML = `<div class="dhead"><span class="t">${esc(r.t)}</span><span>${esc(r.n)}</span>${pill(ai?.rating)}
+    <span class="links"><a href="https://finance.yahoo.com/quote/${qy}" target="_blank" rel="noopener">Yahoo ↗</a><a href="https://www.tradingview.com/symbols/${q}/" target="_blank" rel="noopener">TradingView ↗</a><a href="https://www.google.com/search?q=${q}+stock+news" target="_blank" rel="noopener">Zprávy ↗</a></span></div>
+    <div class="dgrid">${cells.map(([l,v])=>`<div class="dt"><div class="l">${l}</div><div class="v">${v}</div></div>`).join("")}</div>
+    <div class="dsplit">
+      <div><div class="subh" style="margin-top:0">Hlasování výboru (−2 až +2)</div><div class="pbars">${bars}</div></div>
+      <div class="thesis">${ai?.kons ? `<div><b>Analytici${ai.kons.datum?" · "+esc(ai.kons.datum):""}</b><span class="num">${+ai.kons.buy||0} Buy · ${+ai.kons.hold||0} Hold · ${+ai.kons.sell||0} Sell</span>${+ai.kons.cil>0?` · cíl <span class="num">${fmt(+ai.kons.cil)} ${r.ccy}</span> <span class="${cls(ai.upside)}">(${pct(ai.upside)})</span>`:""}${ai.kons.src?` · <a href="${esc(ai.kons.src)}" target="_blank" rel="noopener">zdroj ↗</a>`:""}</div>`:""}${ai?.zpravy ? `<div><b>Aktuálně</b>${esc(ai.zpravy)}</div>`:""}${ai ? `<div><b>Teze</b>${esc(ai.teze)}</div><div><b>Hlavní riziko</b>${esc(ai.riziko)}</div><div><b>Katalyzátor</b>${esc(ai.kat)}</div>` : `<p class="muted" style="margin:0">Tahle pozice zatím nemá hodnocení. Svolej investiční výbor a dostane tezi, rizika i hlasy všech šesti strategií.</p>`}</div>
+    </div>`;
+}
+function bars(obj, el, warnAt){
+  const e = Object.entries(obj).sort((a,b)=>b[1]-a[1]); const max = Math.max(1,...e.map(x=>x[1]));
+  el.innerHTML = e.length ? e.map(([s,w])=>`<div class="arow"><span class="n" title="${esc(s)}">${esc(s)}</span><div class="track"><div class="fill" style="width:${w/max*100}%;${w>warnAt?"background:var(--warn)":""}"></div></div><span class="p">${fmt(w,1)} %</span></div>`).join("") : `<span class="muted">Žádná data.</span>`;
+}
+/* ===== donut charts ===== */
+const SEC_COL = {"Technologie":"--s1","Finance":"--s2","Spotřební zboží":"--s3","Komunikace":"--s4","Průmysl":"--s5","Energie":"--s6","Zdravotnictví":"--s7","Základní spotřeba":"--s8"};
+const RANK_COL = ["#184f95","#256abf","#3987e5","#6da7ec","#9ec5f4"];   /* jeden odstín: větší pozice = tmavší */
+function topN(items, n){ const s = [...items].sort((a,b)=>b.v-a.v); if (s.length<=n+1) return s; const rest = s.slice(n); return [...s.slice(0,n), {k:"Ostatní", v:rest.reduce((a,x)=>a+x.v,0), col:"var(--oth)", note:rest.map(x=>x.k).join(", ")}]; }
+function donut(id, title, items, c1, c2){
+  const tot = items.reduce((a,x)=>a+x.v,0) || 1, R = 62, SW = 24, C = 2*Math.PI*R, GAP = 2.5;
+  let off = 0;
+  const segs = items.map((x,i)=>{ const len = x.v/tot*C; const d = `<circle class="seg" data-dn="${id}" data-i="${i}" cx="90" cy="90" r="${R}" fill="none" stroke="${x.col}" stroke-width="${SW}" stroke-dasharray="${Math.max(0.1,len-GAP).toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 90 90)"><title>${esc(x.k)}: ${fmt(x.v/tot*100,1)} %</title></circle>`; off += len; return d; }).join("");
+  const leg = items.map((x,i)=>`<li data-dn="${id}" data-i="${i}" title="${esc(x.note||x.k)}"><i style="background:${x.col}"></i><span class="n">${esc(x.k)}</span><span class="p">${fmt(x.v/tot*100,1)} %</span><span class="v">${esc(compact(x.v))}</span></li>`).join("");
+  return `<div class="dn" data-id="${id}"><h3>${esc(title)}</h3>
+    <svg viewBox="0 0 180 180" role="img" aria-label="${esc(title)}: ${esc(items.map(x=>x.k+" "+fmt(x.v/tot*100,0)+" %").join(", "))}">${segs}
+      <text class="c1" x="90" y="92" text-anchor="middle">${esc(c1)}</text><text class="c2" x="90" y="110" text-anchor="middle">${esc(c2)}</text></svg>
+    <ul class="dleg">${leg}</ul></div>`;
+}
+function renderDonuts(m){
+  const el = $("donuts"); if (!el) return;
+  if (!m.rows.length || !(m.total>0)){ el.innerHTML = `<span class="muted">Žádná data.</span>`; return; }
+  const etf = m.rows.filter(r=>r.s==="ETF / index").sort((a,b)=>b.value-a.value);
+  const stk = m.rows.filter(r=>r.s!=="ETF / index");
+  const stkV = stk.reduce((a,r)=>a+r.value,0);
+  const tgt = allocSettings().etf;
+  const A = [...etf.map((r,i)=>({k:`${r.t} · ${r.n}`, v:r.value, col:`var(--s${i===0?1:i===1?3:i+4})`})), {k:"Jednotlivé akcie", v:stkV, col:"var(--s2)"}].filter(x=>x.v>0);
+  const secs = {}; stk.forEach(r=>{ secs[r.s] = (secs[r.s]||0) + r.value; });
+  const B = topN(Object.entries(secs).map(([k,v])=>({k, v, col:SEC_COL[k] ? `var(${SEC_COL[k]})` : "var(--oth)"})), 5);
+  const firms = {}; m.rows.forEach(r=>{ const k = r.t; firms[k] = (firms[k]||0) + r.value; });
+  const Cc = topN(Object.entries(firms).map(([k,v])=>({k, v})), 5).map((x,i)=>({...x, col: x.col || RANK_COL[i] || "var(--oth)"}));
+  const top = B[0];
+  el.innerHTML = donut("a","ETF vs. akcie", A, fmt(m.etfW,0)+" % ETF", `cíl ${tgt} %`)
+    + donut("b","Sektory akciové části", B, stkV ? fmt(top.v/stkV*100,0)+" %" : "—", top ? top.k.toUpperCase().slice(0,18) : "")
+    + donut("c","Největší pozice", Cc, fmt(Cc[0].v/m.total*100,0)+" %", Cc[0].k + (m.rows.filter(r=>r.t===Cc[0].k).length>1 ? " · obě kotace" : ""));
+}
+(()=>{ const tip = document.createElement("div"); tip.className = "dtip"; tip.hidden = true; document.body.appendChild(tip);
+  const hl = (dn, i, on) => document.querySelectorAll(`#donuts [data-dn="${dn}"][data-i="${i}"]`).forEach(e=>e.classList.toggle("on", on));
+  document.addEventListener("mouseover", e => { const t = e.target.closest?.("#donuts [data-dn]"); if (!t) return; hl(t.dataset.dn, t.dataset.i, true);
+    const li = document.querySelector(`#donuts li[data-dn="${t.dataset.dn}"][data-i="${t.dataset.i}"]`);
+    if (li){ tip.innerHTML = `<b>${esc(li.querySelector(".n").textContent)}</b> · ${esc(li.querySelector(".p").textContent)} · ${esc(li.querySelector(".v").textContent)}${li.title && li.title!==li.querySelector(".n").textContent ? `<br><span class="muted">${esc(li.title)}</span>` : ""}`; tip.hidden = false; } });
+  document.addEventListener("mouseout", e => { const t = e.target.closest?.("#donuts [data-dn]"); if (!t) return; hl(t.dataset.dn, t.dataset.i, false); tip.hidden = true; });
+  document.addEventListener("mousemove", e => { if (!tip.hidden){ tip.style.left = Math.min(innerWidth - tip.offsetWidth - 8, e.clientX + 14) + "px"; tip.style.top = (e.clientY + 14) + "px"; } });
+})();
+function renderAlloc(m){ bars(m.bySector, $("alloc"), 40); bars(m.byCcy, $("ccyAlloc"), 80); }
+
+function renderPress(){
+  $("pressCards").innerHTML = PRESS.map(p=>{const r=RATINGS.find(x=>x.k===p.r);return `<div class="card"><div class="r1"><span><span class="tk">${p.t}</span> <span class="nm">${esc(p.n)}</span></span>${pill(r)}</div><div class="meta"><span class="tag">${esc(p.info)}</span></div><p>${esc(p.p)}</p><button class="btn ghost add" type="button" data-addsym="${p.t}.US" data-addname="${esc(p.n)}">+ Do portfolia</button></div>`;}).join("");
+}
+function renderIdeas(){
+  if (ideasBusy) return;
+  const I = state.ai.ideas;
+  if (!I || !Array.isArray(I.list) || !I.list.length){
+    $("ideasOut").innerHTML = `<div class="empty">Zatím žádné AI nápady. Klikni na <b class="amber">Najít příležitosti</b> a Claude podle tvého portfolia a profilu najde akcie a ETF s hodnocením BUY nebo STRONG BUY. Uvidíš tezi, rizika, míru hype a důvod, proč se ti hodí.</div>`;
+    return;
+  }
+  $("ideasOut").innerHTML = `<p class="small muted" style="margin:12px 0 0">Vygenerováno ${new Date(I.at).toLocaleString("cs-CZ")} · profil ${esc(I.profile||"")}${I.pohled?` · ${esc(I.pohled)}`:""}</p>
+  <div class="cards">${I.list.map(x=>{
+    const r = ratingFromLabel(x.hodnoceni) || RATINGS[3]; const hype = Math.max(0,Math.min(100,+x.hype||0));
+    const sym = String(x.xtb||x.ticker||"").toUpperCase();
+    return `<div class="card"><div class="r1"><span><span class="tk">${esc(x.ticker)}</span> <span class="nm">${esc(x.nazev)}</span></span>${pill(r)}</div>
+      <div class="meta"><span class="tag">${esc(x.styl||"")}</span><span class="tag">${esc(x.horizont||"")}</span>${x.sektor?`<span class="tag">${esc(x.sektor)}</span>`:""}</div>
+      <div class="hype"><span>HYPE</span><span class="bar"><i style="width:${hype}%"></i></span><span>${hype}</span></div>
+      ${x.konsenzus?`<p class="small num muted">${esc(x.konsenzus)}</p>`:""}
+      <p>${esc(x.teze)}</p>
+      <p class="small"><span class="down">Riziko:</span> ${esc(x.riziko)}</p>
+      <p class="small"><span class="amber">Proč k tobě:</span> ${esc(x.proc_do_portfolia)}</p>
+      <button class="btn ghost add" type="button" data-addsym="${esc(sym)}" data-addname="${esc(x.nazev)}" data-addsec="${esc(x.sektor||"")}">+ Do portfolia</button></div>`;}).join("")}</div>`;
+}
+function rebalance(m){
+  const cap = PROFILE[state.profile].cap;
+  let t = m.rows.map(r=>({r, cap: r.s==="ETF / index" ? 100 : cap, w: r.w * (r.ai ? MULT[r.ai.rating.k] : 1)}));
+  let sum = t.reduce((a,x)=>a+x.w,0); if (!sum) return [];
+  t.forEach(x=>x.w = x.w/sum*100);
+  for (let i=0;i<30;i++){
+    let excess = 0; t.forEach(x=>{ if (x.w>x.cap){ excess += x.w-x.cap; x.w = x.cap; } });
+    if (excess < 1e-6) break;
+    const free = t.filter(x=>x.w<x.cap && x.w>0); const fs = free.reduce((a,x)=>a+x.w,0);
+    if (!fs) break; free.forEach(x=>x.w += excess*x.w/fs);
+  }
+  return t.map(x=>{ const dv = (x.w - x.r.w)/100*m.total; const unit = toBase(x.r.p, x.r.ccy); return {...x, dv, dq: unit? dv/unit : 0}; });
+}
+function renderRebal(m){
+  const plan = rebalance(m);
+  const cap = PROFILE[state.profile].cap;
+  const moves = plan.filter(x=>Math.abs(x.w-x.r.w)>=0.5).sort((a,b)=>a.dv-b.dv);
+  const rated = m.rated;
+  $("rebal").innerHTML = `<p class="small muted" style="margin:0 0 10px">Cílové váhy: současná váha × hodnocení výboru (STRONG BUY ×1,35 · BUY ×1,15 · HOLD ×1 · SELL ×0,6 · STRONG SELL ×0), strop ${cap} % na jednu akcii (ETF bez stropu) podle profilu ${PROFILE[state.profile].n}. ${rated?"":"Bez hodnocení výboru se uplatní jen strop."}</p>
+  ${moves.length ? `<div class="tw"><table><thead><tr><th class="l">Ticker</th><th>Nyní</th><th>Cíl</th><th>Změna</th><th>Kusy</th><th class="c">Akce</th></tr></thead><tbody>${moves.map(x=>`<tr data-s="${esc(x.r.sym)}"><td class="l tk">${esc(x.r.t)}</td><td>${fmt(x.r.w,1)} %</td><td>${fmt(x.w,1)} %</td><td class="${cls(x.dv)}">${x.dv>0?"+":""}${money(x.dv)}</td><td class="${cls(x.dq)}">${x.dq>0?"+":""}${fmt(x.dq, Math.abs(x.dq)<10?1:0)}</td><td class="c"><span class="rt ${x.dv>0?"rt-b":"rt-s"}">${x.dv>0?"PŘIKOUPIT":x.w<0.01?"PRODAT":"SNÍŽIT"}</span></td></tr>`).join("")}</tbody></table></div>` : `<div class="empty" style="margin-top:0">Portfolio odpovídá cílovým vahám, žádné obchody nejsou potřeba.</div>`}
+  <p class="disc">Bez poplatků, daní a měnových konverzí. Kusy jsou orientační, u frakčních akcií v XTB lze obchodovat i zlomky.</p>`;
+}
+function gauge(v,max,color){ return `<div class="gauge"><i style="width:${Math.min(100,Math.max(0,v/max*100))}%;background:${color}"></i></div>`; }
+function renderRisk(m){
+  const sev = (v,a,b)=> v>=b?"var(--down)":v>=a?"var(--warn)":"var(--up)";
+  const topSector = Object.entries(m.bySector).sort((a,b)=>b[1]-a[1])[0];
+  $("risk").innerHTML = [
+    ["Největší akcie", fmt(m.top1,1)+" %", (m.top1n?m.top1n+" · ":"")+"strop 10–20 %, ETF se nepočítají", gauge(m.top1,40,sev(m.top1,15,25))],
+    ["Top 5 akcií", fmt(m.top5,1)+" %", `pět největších akcií · ETF tvoří ${fmt(m.etfW,0)} %`, gauge(m.top5,100,sev(m.top5,60,80))],
+    ["Efektivní počet pozic", fmt(m.effN,1), "1 / HHI, víc je lépe", gauge(Math.max(0,20-m.effN),20,sev(20-m.effN,10,15))],
+    ["Odhad volatility", fmt(sigmaOf(m)*100,1)+" % p.a.", "z bety a koncentrace", gauge(sigmaOf(m)*100,40,sev(sigmaOf(m)*100,18,25))]
+  ].map(([l,v,h,g])=>`<div class="rk"><div class="l">${l}</div><div class="v num">${v}</div><div class="h">${h}</div>${g}</div>`).join("");
+  const notes = [];
+  if (m.top1>20) notes.push(`Největší akciová pozice (${m.top1n}) má ${fmt(m.top1,1)} %. Jeden slabý kvartál té firmy pohne celým portfoliem.`);
+  if (topSector && topSector[1]>40) notes.push(`${topSector[0]} tvoří ${fmt(topSector[1],1)} % portfolia.`);
+  if (m.beta>1.15) notes.push(`Beta ${fmt(m.beta,2)}: při poklesu trhu o 10 % čekej pokles zhruba o ${fmt(m.beta*10,0)} %.`);
+  const usd = m.byCcy.USD||0; if (usd>70 && state.base==="CZK") notes.push(`${fmt(usd,0)} % majetku je v dolarech. Posílení koruny o 10 % ubere zhruba ${fmt(usd/10,1)} % hodnoty.`);
+  const sells = m.rows.filter(r=>r.ai && (r.ai.rating.k==="s"||r.ai.rating.k==="ss")).map(r=>r.t);
+  if (sells.length) notes.push(`Výbor doporučuje SELL u: ${sells.join(", ")}.`);
+  const missing = Object.keys(m.byCcy).filter(c=>!state.fx[c]); if (missing.length) notes.push(`Chybí kurz pro ${missing.join(", ")}. Doplň ho v panelu Profil investora.`);
+  if (m.rows.length && m.rows.length<8) notes.push(`Jen ${m.rows.length} pozic. Diverzifikaci zlepší globální ETF.`);
+  if (!notes.length && m.rows.length) notes.push("Žádné výrazné varování, rozložení vypadá vyváženě.");
+  $("riskNotes").innerHTML = notes.map(n=>`<li><span>${esc(n)}</span></li>`).join("");
+}
+function renderFx(m){
+  $("fxLbl").textContent = "Kurzy v CZK · ranní aktualizace" + (Object.keys(liveFx).length ? " · na obrazovce živé " + Object.keys(liveFx).join("/") : "");
+  const need = new Set([...Object.keys(FX_DEFAULT).filter(c=>c!=="CZK"), ...state.holdings.map(h=>h.ccy).filter(c=>c!=="CZK")]);
+  const html = [...need].map(c=>`<label class="f" for="fx-${c}">${c}/CZK<input id="fx-${c}" type="number" step="0.001" min="0" value="${state.fx[c]??""}" data-fx="${c}" ${state.fx[c]?"":`placeholder="doplň kurz" style="border-color:var(--down)"`}></label>`).join("");
+  if ($("fx").dataset.sig !== [...need].join()+JSON.stringify(state.fx)) { $("fx").innerHTML = html; $("fx").dataset.sig = [...need].join()+JSON.stringify(state.fx); }
+}
+function renderTape(m){
+  const items = m.rows.map(r=>`<span><b>${esc(r.t)}</b>${fmt(r.p)} ${r.day!=null?`<span class="${cls(r.day)}">${r.day>=0?"▲":"▼"} ${pct(r.day,2)} dnes</span>`:`<span class="${cls(r.plp)}">${r.plp>=0?"▲":"▼"} ${pct(r.plp)}</span>`}${r.ai?` <span style="color:${r.ai.rating.c}">${r.ai.rating.l}</span>`:""}</span>`).join("");
+  $("tape").innerHTML = items + items;
+}
+
+/* ================= allocator ================= */
+const CORE = {konzervativni:50, vyvazeny:35, agresivni:20};
+const IDEAS_MAX = {konzervativni:3, vyvazeny:8, agresivni:15};
+const ETF_FAST = 80;   /* % vkladu do ETF, dokud je podíl ETF pod cílem */
+const GLOBAL_RE = /VWRA|VWCE|IWDA|SSAC|ACWI|ALL[- ]?WORLD|MSCI WORLD/i;   /* celosvětová ETF */
+const GLOBAL_SHARE = 0.5;   /* cíl: polovina ETF části v celosvětovém ETF, zbytek S&P 500 apod. */
+const SECTOR_CAP = 20, SECTOR_LOW = 5;   /* % portfolia v jednotlivých akciích jednoho sektoru: strop / slabý sektor */
+const SHORT_HZ = "krátkodobý (do 1 roku)", SHORT_ETF_MIN = 15, SHORT_ETF_MAX = 50, SHORT_MIN = 0.5;
+function syncAllocUI(){ const s = $("aHor").value === SHORT_HZ; $("aEtf").disabled = s; $("aEtf").title = s ? "U krátkodobého cíle se podíl ETF počítá automaticky" : ""; $("aEtfLbl").textContent = s ? "Podíl ETF: automaticky" : "Cílový podíl ETF (%)"; }
+function allocSettings(){
+  let o = {etf:65, n:5};
+  try { o = Object.assign(o, JSON.parse(localStorage.getItem("zt-demo-alloc")||"{}")); } catch(e){}
+  return o;
+}
+function loadAllocUI(){ const o = allocSettings(); $("aEtf").value = o.etf; $("aN").value = o.n; }
+function allocate(){
+  const m = calc(), A = Math.max(0, toNum($("aAmt").value)||0), hz = $("aHor").value, minO = Math.max(0, toNum($("aMin").value)||0);
+  if (!(A>0)) return {err:"Zadej částku větší než nula."};
+  const S = {etf: Math.max(0, Math.min(100, toNum($("aEtf").value))), n: Math.max(1, Math.min(10, Math.round(toNum($("aN").value)||5)))};
+  if (isNaN(S.etf)) S.etf = 65;
+  try { localStorage.setItem("zt-demo-alloc", JSON.stringify(S)); } catch(e){}
+  const T = m.total + A, cap = PROFILE[state.profile].cap;
+  const short = hz === SHORT_HZ;
+  const etfRows = m.rows.filter(r=>r.s==="ETF / index" && r.p>0);
+  const below = !short && m.etfW < S.etf - 1;
+  let etfPct = !etfRows.length ? 0 : (below ? Math.max(S.etf, ETF_FAST) : S.etf);
+  /* akcie: kandidáti podle dlouhodobého skóre, bez SELL, pod stropem, jedna kotace na firmu */
+  const secW = {}; m.rows.filter(r=>r.s!=="ETF / index").forEach(r=>{ secW[r.s] = (secW[r.s]||0) + r.w; });
+  const divBonus = sec => short ? 0 : Math.max(0, (SECTOR_LOW - (secW[sec]||0))/SECTOR_LOW)*0.4;
+  const best = new Map();
+  m.rows.filter(r=>r.s!=="ETF / index" && r.p>0).forEach(r=>{
+    const sc = r.ai ? r.ai.model(hz) : 0;
+    const bonus = divBonus(r.s);
+    const x = {sym:r.sym, t:r.t, n:r.n, ccy:r.ccy, p:r.p, s:r.s, etf:false, cur:r.value, gw:r.gw, score:sc + bonus, bonus, rating:r.ai?.rating||null, upside:r.ai?.upside??null, isNew:false};
+    const prev = best.get(r.t); if (!prev || r.value > prev.cur) best.set(r.t, x);
+  });
+  const skipped = [], overCap = [], secFull = [];
+  let cands = [...best.values()].filter(x=>{
+    if (x.rating && (x.rating.k==="s"||x.rating.k==="ss")){ skipped.push(x.t); return false; }
+    if (x.gw >= cap){ overCap.push(x.t); return false; }
+    if (!short && (secW[x.s]||0) >= SECTOR_CAP){ secFull.push(x.t); return false; }
+    if (x.score <= (short ? SHORT_MIN : 0.25)){ skipped.push(x.t); return false; }
+    return true; });
+  const I = state.ai.ideas;
+  if ($("aIdeas").checked && I && Array.isArray(I.list)){
+    I.list.forEach(x=>{ const t = String(x.ticker||"").toUpperCase(); if (!t || best.has(t)) return;
+      const r = ratingFromLabel(x.hodnoceni) || RATINGS[3]; if (r.k!=="sb" && r.k!=="b") return;
+      const sec = SECTORS.includes(x.sektor) ? x.sektor : "Jiné";
+      if (sec==="ETF / index" || (!short && (secW[sec]||0) >= SECTOR_CAP)) return;
+      const bonus = divBonus(sec);
+      cands.push({sym:String(x.xtb||t).toUpperCase(), t, n:x.nazev||t, ccy:ccyOf(x.xtb||t), p:+x.cena||0, s:sec, etf:false, cur:0, gw:0, score:(r.k==="sb"?1.6:1.0)+bonus, bonus, rating:r, upside:null, isNew:true}); });
+  }
+  cands.sort((a,b)=>b.score-a.score);
+  let pick = cands.slice(0, S.n);
+  if (!short){   /* diverzifikace: nejdřív nejlepší firma z každého sektoru, teprve pak druhé v pořadí */
+    const seen = new Set(), first = [], rest = [];
+    cands.forEach(x=>{ (seen.has(x.s) ? rest : first).push(x); seen.add(x.s); });
+    pick = [...first, ...rest].slice(0, S.n);
+  }
+  /* krátkodobý cíl: podíl ETF podle síly přesvědčení u nejlepších akcií (silné tipy → méně ETF), bez dobíhání ETF jádra */
+  let conv = null;
+  if (short && etfRows.length){
+    conv = pick.length ? pick.reduce((a,x)=>a+x.score,0)/pick.length : 0;
+    etfPct = pick.length ? Math.max(SHORT_ETF_MIN, Math.min(SHORT_ETF_MAX, Math.round((55 - 20*conv)/5)*5)) : 100;
+  }
+  const wOf = x => short ? x.score*x.score : x.score;   /* krátkodobě víc peněz do nejsilnějších tipů */
+  let stkBudget = A*(1-etfPct/100);
+  /* rozdělení akciové části podle skóre, vyřazení nákupů pod minimem */
+  for (let i=0;i<10;i++){
+    const ss = pick.reduce((a,x)=>a+wOf(x),0) || 1;
+    pick.forEach(x=>{ x.amt = stkBudget*wOf(x)/ss; const room = Math.max(0,(cap - x.gw)/100*T); if (x.amt > room) x.amt = room; });
+    const small = pick.filter(x=>x.amt < minO); if (!small.length || pick.length<=1) break;
+    pick = pick.filter(x=>x!==small.sort((a,b)=>a.amt-b.amt)[0]);
+  }
+  pick = pick.filter(x=>x.amt >= Math.max(1, minO));
+  const stkUsed = pick.reduce((a,x)=>a+x.amt,0);
+  const etfAmt = etfRows.length ? A - stkUsed : 0;
+  /* ETF část: přednostně do celosvětového ETF, dokud netvoří GLOBAL_SHARE všech ETF (lepší rozložení než samotné S&P 500) */
+  const isG = r => GLOBAL_RE.test(r.sym+" "+r.n);
+  const gRows = etfRows.filter(isG), oRows = etfRows.filter(r=>!isG(r));
+  const sumV = a => a.reduce((x,r)=>x+r.value,0);
+  let gAmt = 0;
+  if (gRows.length && oRows.length){ const tgt = GLOBAL_SHARE*(sumV(etfRows)+etfAmt); gAmt = Math.max(0, Math.min(etfAmt, tgt - sumV(gRows))); }
+  else if (gRows.length) gAmt = etfAmt;
+  const split = (rows, amt) => { const tot = sumV(rows); return rows.map(r=>({r, amt: tot ? amt*r.value/tot : amt/rows.length})); };
+  const gShareNow = sumV(etfRows) ? sumV(gRows)/sumV(etfRows)*100 : 0;
+  const etfOut = [...split(gRows, gAmt), ...split(oRows, etfAmt-gAmt)].map(({r,amt})=>({sym:r.sym, t:r.t, n:r.n, ccy:r.ccy, p:r.p, etf:true, glob:isG(r), cur:r.value, score:r.ai?r.ai.model(hz):0, rating:r.ai?.rating||null, upside:null, isNew:false, amt}));
+  const out = [...etfOut, ...pick].filter(x=>x.amt>0.5).sort((a,b)=> (b.etf-a.etf) || (b.amt-a.amt)).map(x=>{
+    const unit = toBase(x.p||0, x.ccy);
+    const why = x.etf ? (x.glob ? `Celý svět · ${fmt(gShareNow,0)} % ETF části → cíl ${GLOBAL_SHARE*100} %` : short ? `Pojistka · ${etfPct} % vkladu do ETF` : `Jádro · ETF ${fmt(m.etfW,0)} % → cíl ${S.etf} %`) : (x.isNew ? "Nová pozice z doporučení" : short ? `Top ${S.n} podle krátkodobého skóre (moment + analytici)` : `Top ${S.n} podle skóre pro cíl`) + (x.bonus>0.05 ? ` · doplňuje slabý sektor ${x.s}` : "");
+    return {...x, native: fxOf(x.ccy) ? x.amt*fxOf(state.base)/fxOf(x.ccy) : null, shares: unit ? x.amt/unit : null, why};
+  });
+  const etfAfter = T ? (m.etfW/100*m.total + etfAmt)/T*100 : 0;
+  return {A, T, out, skipped, overCap, secFull, gShareNow, hasG: gRows.length>0, hz, S, below, short, conv, etfPct, etfReal: A? etfAmt/A*100 : 0, etfNow:m.etfW, etfAfter, nC:cands.length};
+}
+function renderAllocation(){
+  const r = allocate();
+  if (r.err){ $("alcOut").innerHTML = `<p class="down small" style="margin-top:12px">${esc(r.err)}</p>`; return; }
+  const col = x => x.isNew ? "var(--cyan)" : x.etf ? "var(--amber)" : scoreColor(x.rating ? RATINGS.indexOf(x.rating)-2 : 0);
+  const sum = (f) => r.out.filter(f).reduce((a,x)=>a+x.amt,0);
+  const sEtf = sum(x=>x.etf), sNew = sum(x=>x.isNew), sStk = r.A - sEtf - sNew;
+  $("alcOut").innerHTML = `
+    <p class="small" style="margin:12px 0 0">${r.short ? `<b class="amber">Krátkodobý režim (vyšší riziko):</b> průměrné krátkodobé skóre vybraných akcií je <b>${r.conv!=null?fmt(r.conv,2):"—"}</b>, proto jde do ETF jen <b>${fmt(r.etfReal,0)} %</b> vkladu a zbytek do nejsilnějších akcií. Čím silnější tipy, tím méně ETF (${SHORT_ETF_MIN}–${SHORT_ETF_MAX} %); když žádná akcie nemá skóre nad ${fmt(SHORT_MIN,1)}, jde vše do ETF.` : r.below ? `Podíl ETF je <b class="amber">${fmt(r.etfNow,0)} %</b>, cíl <b>${r.S.etf} %</b>: do ETF teď jde <b>${fmt(r.etfReal,0)} %</b> vkladu, zbytek do nejlepších akcií. Po tomto vkladu bude ETF ${fmt(r.etfAfter,1)} %.` : `Podíl ETF ${fmt(r.etfNow,0)} % je u cíle ${r.S.etf} %, vklad se dělí v poměru ${r.S.etf} : ${100-r.S.etf}.`}</p>
+    <div class="stack" aria-hidden="true">${r.out.map(x=>`<span style="width:${x.amt/r.A*100}%;background:${col(x)}" title="${esc(x.t)} ${esc(money(x.amt))}"></span>`).join("")}</div>
+    <div class="alc-sum">
+      <div class="rk"><div class="l">ETF (jádro)</div><div class="v num amber">${esc(money(sEtf))}</div></div>
+      <div class="rk"><div class="l">Akcie</div><div class="v num">${esc(money(sStk))}</div></div>
+      <div class="rk"><div class="l">Nové tituly</div><div class="v num" style="color:var(--cyan)">${esc(money(sNew))}</div></div>
+      <div class="rk"><div class="l">Počet nákupů</div><div class="v num">${r.out.length}</div></div>
+    </div>
+    <div class="tw" style="margin-top:12px"><table><thead><tr><th class="l">Ticker</th><th class="l">Název</th><th class="c">Hodnocení</th><th>Skóre modelu</th><th>Částka</th><th>V měně titulu</th><th>≈ Kusy</th><th class="l">Proč</th></tr></thead><tbody>
+    ${r.out.map(x=>`<tr><td class="l tk">${esc(x.t)}${x.isNew?' <span class="tag" style="color:var(--cyan)">NOVÁ</span>':""}</td><td class="l nm">${esc(x.n)}</td><td class="c">${pill(x.rating)}</td><td style="color:${scoreColor(x.score)}">${x.etf?"—":(x.score>0?"+":"")+fmt(x.score,2)}</td><td><b>${esc(money(x.amt))}</b></td><td>${x.native!=null?esc(money(x.native,x.ccy,2)):"—"}</td><td>${x.shares!=null?fmt(x.shares, x.shares<10?3:1):"—"}</td><td class="l" style="font-family:var(--f-ui)">${esc(x.why)}${x.upside!=null?` · potenciál ${pct(x.upside,0)}`:""}</td></tr>`).join("")}
+    </tbody><tfoot><tr><td class="l">CELKEM</td><td></td><td></td><td></td><td>${esc(money(r.A))}</td><td></td><td></td><td></td></tr></tfoot></table></div>
+    <p class="disc">${r.short ? `Krátkodobě: skóre staví hlavně na momentu (35 %) a konsenzu analytiků (30 %) plus potenciálu k cílové ceně; částky se dělí podle druhé mocniny skóre, takže nejsilnější tipy dostanou nejvíc. Strop ${PROFILE[state.profile].cap} % na firmu platí dál. Vyšší možný výnos znamená i vyšší riziko: za rok může jednotlivá akcie ztratit 30 % i víc, kdežto široké ETF kolísá méně. ` : ""}${r.short ? "" : `Pravidla: dokud je podíl ETF pod cílem, jde do ETF ${ETF_FAST} % vkladu (při vyšším cíli víc), jinak přesně cílový poměr. `}${r.hasG ? `ETF část jde přednostně do celosvětového ETF, dokud netvoří ${GLOBAL_SHARE*100} % všech ETF (teď ${fmt(r.gShareNow,0)} %): S&P 500 obsahuje stejné americké firmy, jaké už držíš samostatně, celosvětové ETF přidá Evropu, Asii a rozvíjející se trhy.` : `ETF část se dělí mezi tvoje ETF podle jejich současné velikosti. Pro lepší rozložení zvaž celosvětové ETF (např. VWRA).`} Akciová část jde do nejvýš ${r.S.n} akcií s nejvyšším skóre modelu pro cíl ${esc(r.hz)} (vážené hlasy výboru + potenciál k cíli analytiků), úměrně skóre${r.short ? "" : ", přičemž dostane přednost vždy nejlepší firma z každého sektoru"}; nákupy pod minimem se vynechají a peníze jdou do ostatních. Nic se neprodává.${!r.short ? ` Akcie ze sektoru, který už tvoří ${SECTOR_CAP} % portfolia a víc, nové peníze nedostanou, a firmy ze slabě zastoupených sektorů (pod ${SECTOR_LOW} %) dostanou bonus ke skóre.` : ""}${r.secFull?.length?` Sektor nad ${SECTOR_CAP} % (sem nic): ${esc(r.secFull.join(", "))}.`:""}${r.overCap.length?` Nad stropem ${PROFILE[state.profile].cap} % (sem nic): ${esc(r.overCap.join(", "))}.`:""}${r.skipped.length?` Vynecháno kvůli SELL nebo slabému skóre: ${esc(r.skipped.join(", "))}.`:""} XTB účtuje 0,5 % za převod měny, dolarové a eurové nákupy je výhodné dělat z účtu v dané měně. Nejde o investiční doporučení.</p>`;
+}
+
+/* ================= Monte Carlo ================= */
+function sigmaOf(m){
+  const sm = 0.16; let idio = 0;
+  m.rows.forEach(r=>{ const s = r.s==="ETF / index" ? 0.03 : 0.28; idio += (r.w/100)**2 * s*s; });
+  return Math.sqrt((m.beta*sm)**2 + idio);
+}
+function mulberry(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function renderMC(m){
+  const years = +$("mcYears").value, monthly = Math.max(0, +$("mcMonthly").value||0);
+  const mu = 0.035 + m.beta*0.05, sig = sigmaOf(m), N = 2000, steps = years*12;
+  const rnd = mulberry(42); const pcts = {p10:[],p50:[],p90:[]}; const invested = [];
+  let vals = new Float64Array(N).fill(m.total);
+  const dm = (mu - sig*sig/2)/12, sm = sig/Math.sqrt(12);
+  const snap = (k)=>{ const s = Array.from(vals).sort((a,b)=>a-b); pcts.p10.push(s[Math.floor(N*.1)]); pcts.p50.push(s[Math.floor(N*.5)]); pcts.p90.push(s[Math.floor(N*.9)]); invested.push(m.total + monthly*k); };
+  snap(0);
+  for (let k=1;k<=steps;k++){
+    for (let i=0;i<N;i++){ let u=0,v=0; while(!u)u=rnd(); while(!v)v=rnd(); const z=Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); vals[i] = vals[i]*Math.exp(dm+sm*z) + monthly; }
+    if (k%12===0) snap(k);
+  }
+  const W=800,H=280,L=100,R=16,T=14,B=30; const maxY = Math.max(1,...pcts.p90)*1.05;
+  const x = i => L + (W-L-R)*i/years, y = v => T + (H-T-B)*(1 - v/maxY);
+  const line = arr => arr.map((v,i)=>`${i?"L":"M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  const band = line(pcts.p90) + pcts.p10.map((v,i)=>i).reverse().map(i=>`L${x(i).toFixed(1)},${y(pcts.p10[i]).toFixed(1)}`).join("") + "Z";
+  let grid = "";
+  for (let g=0; g<=4; g++){ const v = maxY*g/4; grid += `<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line-soft)" stroke-width="1"/><text x="${L-8}" y="${y(v)+4}" text-anchor="end">${esc(compact(v))}</text>`; }
+  const stepX = years<=10?1:years<=20?5:5;
+  for (let i=0;i<=years;i+=stepX){ grid += `<text x="${x(i)}" y="${H-10}" text-anchor="middle">${i===0?"dnes":"+"+i+" r"}</text>`; }
+  const last = years;
+  $("mcChart").innerHTML = `${grid}<path d="${band}" fill="rgba(255,166,43,.18)" stroke="none"/><path d="${line(invested)}" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="4 4"/><path d="${line(pcts.p50)}" fill="none" stroke="var(--amber)" stroke-width="2.5"/><circle cx="${x(last)}" cy="${y(pcts.p50[last])}" r="4" fill="var(--amber)"/>`;
+  const st = [["Pesimistický (10 %)", pcts.p10[last], "var(--down)"],["Mediánový", pcts.p50[last], "var(--amber)"],["Optimistický (90 %)", pcts.p90[last], "var(--up)"],["Vloženo celkem", invested[last], "var(--fg)"]];
+  $("mcStats").innerHTML = st.map(([l,v,c])=>`<div class="rk"><div class="l">${l}</div><div class="v num" style="color:${c}">${esc(money(v))}</div></div>`).join("");
+  $("mcNote").textContent = `Předpoklady: očekávaný výnos ${fmt(mu*100,1)} % ročně (bezriziková sazba 3,5 % + beta ${fmt(m.beta,2)} × riziková prémie 5 %), volatilita ${fmt(sig*100,1)} %, měsíční vklady, bez poplatků a daní. Je to statistický model, ne předpověď.`;
+}
+
+/* ================= clocks ================= */
+function clock(){
+  const now = new Date();
+  $("clock").textContent = now.toLocaleTimeString("cs-CZ",{timeZone:"Europe/Prague",hour12:false});
+  const ny = new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",weekday:"short",hour12:false}).formatToParts(now);
+  const g = t => ny.find(p=>p.type===t)?.value; const h = +g("hour")%24, mi = +g("minute"), wd = g("weekday");
+  $("nyclock").textContent = `${String(h).padStart(2,"0")}:${String(mi).padStart(2,"0")}`;
+  const mins = h*60+mi, open = !["Sat","Sun"].includes(wd) && mins>=570 && mins<960;
+  $("mkt").innerHTML = open ? `<span class="up">● OTEVŘENO</span>` : `<span class="muted">● ZAVŘENO</span>`;
+}
+setInterval(clock,1000); clock();
+
+/* ================= persistence ================= */
+function setSave(t){ $("saveState").textContent = t; }
+function persist(){
+  try { localStorage.setItem("zt-demo-v1", JSON.stringify(state)); } catch(e){}
+  if (!docRef){ setSave(state.isSample?"UKÁZKA":"ULOŽENO V PROHLÍŽEČI"); return; }
+  clearTimeout(saveTimer); setSave("UKLÁDÁM…"); saveTimer = setTimeout(flush, 700);
+}
+async function flush(){
+  if (saving){ pendingSave = true; return; }
+  saving = true;
+  try { await docRef.set({...clone(state), updatedAt:new Date().toISOString()}); setSave("ULOŽENO ✓"); }
+  catch(e){ setSave("NEULOŽENO"); status("Uložení selhalo: "+(e?.message||e?.code||"neznámá chyba"),"err"); }
+  saving = false; if (pendingSave){ pendingSave = false; flush(); }
+}
+function mutate(fn){
+  if (state.isSample){ state.isSample = false; if (state.ai.committee?.sample) state.ai.committee = null; }
+  fn(); render(); persist();
+}
+try { const ls = JSON.parse(localStorage.getItem("zt-demo-v1")||"null"); if (ls && Array.isArray(ls.holdings)) state = normalize(ls); } catch(e){}
+setSave(state.isSample?"UKÁZKA":"ULOŽENO V PROHLÍŽEČI");
+
+(async () => {
+  if (true) return;   /* demo: žádná sdílená databáze ani živé ceny */
+  try {
+    const [d,u] = await Promise.all([claude.use("db"), claude.use("user")]);
+    if (!d) return;
+    const id = u ? await u.id() : null;
+    docRef = d.doc("portfolio/main");
+    let snap = await docRef.get();
+    let migrated = false;
+    if (!snap.exists && id){ const old = await d.doc("data/users/"+id+"/portfolio").get().catch(()=>null); if (old?.exists){ snap = old; migrated = true; } }
+    if (migrated) setTimeout(flush, 0);
+    if (snap.exists){ const data = snap.data(); if (Array.isArray(data.holdings)){ state = normalize(data); render(); } setSave(state.isSample?"UKÁZKA":"ULOŽENO ✓"); }
+    else if (!state.isSample) flush();
+  } catch(e){ docRef = null; }
+  startLive();
+})();
+(async () => {
+  if (true){ aiOff(); return; }   /* demo: AI funkce vypnuté */
+  const s = await claude.use("sample"); if (s) sampleFn = s; else aiOff();
+})();
+function aiOff(){ ["aiRun","ideasRun"].forEach(id=>{ $(id).disabled = true; }); $("aiHint").textContent = "V demu je AI výbor vypnutý, hodnocení jsou ukázková."; }
+
+/* ================= live prices (Twelve Data) ================= */
+const LIVE_SERVER = "Twelve Data";
+const LIVE_OPEN_MS = 15*60*1000, LIVE_GAP_MS = 8000;   /* free plan: ~8 dotazů/min, 800/den */
+let mcpApi = null, liveTimer = null, liveRunning = false, liveLastCycle = 0, liveStop = false, renderT = null;
+function setLive(t, k=""){ const e = $("liveState"); if (e){ e.textContent = t; e.className = k; } }
+function usOpen(){
+  const p = new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",weekday:"short",hour12:false}).formatToParts(new Date());
+  const g = t => p.find(x=>x.type===t)?.value; const mins = (+g("hour")%24)*60 + +g("minute");
+  return !["Sat","Sun"].includes(g("weekday")) && mins>=570 && mins<960;
+}
+function softRender(){
+  clearTimeout(renderT);
+  renderT = setTimeout(()=>{ const a = document.activeElement; if (a && a.closest && a.closest("#holdWrap") && a.tagName==="INPUT"){ softRender(); return; } render(); }, 400);
+}
+function csvRow(payload){
+  const text = typeof payload==="string" ? payload : (payload && typeof payload.result==="string" ? payload.result : "");
+  const lines = text.trim().split("\n"); if (lines.length<2 || !lines[0].includes(";")) return {err: text || "neznámá odpověď"};
+  const h = lines[0].split(";"), v = lines[1].split(";"); const o = {}; h.forEach((k,i)=>o[k.trim()] = (v[i]??"").trim()); return {row:o};
+}
+const LIVE_FATAL = {needs_reauth:"Twelve Data: znovu připoj konektor v Nastavení → Konektory", server_not_connected:"Twelve Data není připojené (Nastavení → Konektory)", selection_required:"Vyber účet Twelve Data v nabídce Claude", not_in_manifest:"Živé ceny nejsou pro tuto stránku povolené", blocked_by_policy:"Živé ceny blokuje nastavení organizace", approval_required:"Živé ceny vyžadují schválení", not_granted:"CENY: RANNÍ", capability_disabled:"CENY: RANNÍ", capability_removed:"CENY: RANNÍ", consent_required:"Povol Twelve Data pro tuto stránku", user_changed:""};
+function liveTargets(){
+  const out = state.holdings.filter(h=>/\.US$/.test(h.sym)).map(h=>({kind:"q", sym:h.sym, t:tick(h.sym).replace("-",".")}));
+  const ccys = new Set(state.holdings.map(h=>h.ccy)); ccys.add(state.base);
+  ["USD","EUR"].forEach(c=>{ if (ccys.has(c)) out.push({kind:"fx", c}); });
+  return out;
+}
+async function liveCall(x){
+  const tool = x.kind==="q" ? "get_quote" : "currency_conversion";
+  const input = x.kind==="q" ? {symbol:x.t, country:"United States"} : {symbol:x.c+"/CZK"};
+  const res = await mcpApi.callTool(LIVE_SERVER, tool, input, {cache:{staleTime:240000, gcTime:86400000}});
+  const r = csvRow(res.payload ?? res.content?.[0]?.text);
+  if (r.err) return {soft:r.err};
+  if (x.kind==="q"){
+    const p = +r.row.close, prev = +r.row.previous_close, at = (+r.row.last_quote_at || +r.row.timestamp || 0)*1000;
+    if (p>0) live[x.sym] = {p, prev: prev>0?prev:null, at, open: r.row.is_market_open==="true"};
+  } else {
+    const rate = +r.row.rate; if (rate>0) liveFx[x.c] = rate;
+  }
+  return {ok:true, cached: !!res.cache};
+}
+async function liveCycle(){
+  if (!mcpApi || liveRunning || liveStop || state.isSample) return;
+  liveRunning = true; liveLastCycle = Date.now();
+  const list = liveTargets(); let ok = 0, soft = 0, fatal = null, i = 0;
+  setLive(`CENY: NAČÍTÁM 0/${list.length}`, "on");
+  for (const x of list){
+    if (liveStop) break;
+    if (document.hidden){ await new Promise(r=>setTimeout(r,1500)); if (document.hidden) continue; }
+    let cached = false;
+    try { const r = await liveCall(x); if (r.ok){ ok++; cached = r.cached; } else soft++; }
+    catch(e){
+      const code = e?.code || "upstream_error";
+      if (code in LIVE_FATAL){ fatal = code; break; }
+      if (code==="tool_error" && /plan|upgrad/i.test(e?.message||"")) soft++;
+      else if (e?.retryable){ await new Promise(r=>setTimeout(r, Math.min(60000, e.retryAfterMs || 15000))); try { const r = await liveCall(x); if (r.ok) ok++; } catch(e2){} }
+    }
+    i++; setLive(`CENY: NAČÍTÁM ${i}/${list.length}`, "on"); softRender();
+    if (!cached && i<list.length) await new Promise(r=>setTimeout(r, LIVE_GAP_MS));
+  }
+  liveRunning = false;
+  if (fatal){
+    if (["needs_reauth","server_not_connected","not_in_manifest","blocked_by_policy","approval_required","consent_required","user_changed"].includes(fatal)){ live = {}; liveFx = {}; }
+    liveStop = fatal!=="consent_required";
+    setLive(LIVE_FATAL[fatal] || "CENY: RANNÍ", fatal.startsWith("cap")||fatal==="not_granted" ? "" : "warn"); render(); return;
+  }
+  const ts = Object.values(live).map(v=>v.at).filter(Boolean); const last = ts.length ? Math.max(...ts) : 0;
+  const when = last ? new Date(last).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"}) : "";
+  setLive(ok ? (usOpen() ? `● ŽIVĚ ${when}` : `CENY: ZÁVĚR USA ${when}`) : "CENY: RANNÍ", ok ? "on" : (soft?"warn":""));
+  render();
+}
+function liveTick(){
+  if (!mcpApi || liveStop || document.hidden) return;
+  const due = !liveLastCycle || (usOpen() && Date.now()-liveLastCycle > LIVE_OPEN_MS);
+  if (due) liveCycle();
+}
+async function startLive(){
+  if (!window.claude?.use) return;
+  try { mcpApi = await claude.use("mcp"); } catch(e){ mcpApi = null; }
+  if (!mcpApi){ setLive("CENY: RANNÍ"); return; }
+  liveTick(); liveTimer = setInterval(liveTick, 60000);
+  document.addEventListener("visibilitychange", ()=>{ if (!document.hidden) liveTick(); });
+}
+
+/* ================= AI: committee ================= */
+function portfolioBrief(m){
+  return m.rows.map(r=>({symbol:r.sym,nazev:r.n,sektor:r.s,mena:r.ccy,kusy:r.q,nakupni_cena:r.c,aktualni_cena:r.p,vaha_pct:+r.w.toFixed(2),zisk_pct:+r.plp.toFixed(1)}));
+}
+function aiError(e){
+  const c = e?.code;
+  return c==="not_granted" ? "AI nebyla povolena. Povolit ji můžeš v oprávněních stránky."
+    : c==="rate_limited" ? "Příliš mnoho dotazů, zkus to za chvíli."
+    : c==="invalid_json" ? "Odpověď nešla přečíst. Zkus to znovu."
+    : c==="prompt_too_large" ? "Portfolio je na jeden dotaz příliš velké."
+    : "AI analýza selhala"+(e?.message?": "+e.message:".");
+}
+async function runCommittee(){
+  if (aiBusy || !sampleFn) { if(!sampleFn) status("AI tu není dostupná.","err"); return; }
+  const m = calc(); if (!m.rows.length){ status("Portfolio je prázdné.","err"); return; }
+  aiBusy = true; $("aiRun").disabled = true;
+  $("vText").innerHTML = `<span class="thinking">Výbor zasedá nad ${m.rows.length} pozicemi</span>`;
+  status("Investiční výbor analyzuje portfolio, může to trvat kolem minuty…");
+  const prompt = `Jsi investiční výbor profesionálního fondu. Odpovídej česky, věcně a konkrétně. Výbor tvoří šest analytiků s odlišnými, ověřenými metodikami:
+${PERSONAS.map(p=>`- "${p.k}": ${p.n} (${p.d})`).join("\n")}
+
+Každý analytik nezávisle ohodnotí každou pozici celým číslem od -2 do +2 (-2 STRONG SELL, -1 SELL, 0 HOLD, +1 BUY, +2 STRONG BUY). Vycházej z toho, co víš o firmách (fundamenty, ocenění, růst, konkurenční pozice, sentiment a konsenzus analytiků podle tvých nejnovějších znalostí). Ceny v tabulce zadal investor, ber je jako aktuální. Risk manažer hodnotí hlavně, jak pozice sedí do TOHOTO portfolia (váha, sektor, korelace). Buď kritický a rozlišuj, nedávej všem stejné skóre.
+
+Investor: profil ${PROFILE[state.profile].n}, horizont ${state.horizon}, základní měna ${state.base}.
+Souhrn: beta ${m.beta.toFixed(2)}, největší pozice ${m.top1.toFixed(1)} %, sektory ${JSON.stringify(Object.fromEntries(Object.entries(m.bySector).map(([k,v])=>[k,+v.toFixed(1)])))}.
+Pozice: ${JSON.stringify(portfolioBrief(m))}
+
+Vrať POUZE JSON:
+{"souhrn":"3-4 věty: celkový verdikt a co udělat jako první","rizika":["max 4 krátké věty"],"pozice":[{"symbol":"přesně jak je v zadání","nazev":"oficiální krátký název","sektor":"jeden z: ${SECTORS.join(", ")}","beta":1.0,"div_vynos":0.0,"skore":{"street":0,"value":0,"growth":0,"quality":0,"momentum":0,"risk":0},"teze":"1-2 věty proč vlastnit","riziko":"1 věta","katalyzator":"1 věta"}]}
+Pole "pozice" musí obsahovat každou pozici ze zadání.`;
+  try {
+    const r = await sampleFn.json(prompt, {modelTier:"complex"});
+    const results = {};
+    (Array.isArray(r?.pozice)?r.pozice:[]).forEach(p=>{
+      const sym = String(p.symbol||"").toUpperCase(); if (!sym) return;
+      const sk = {}; PERSONAS.forEach(x=>{ const v = Math.round(+p.skore?.[x.k]); sk[x.k] = isNaN(v)?0:Math.max(-2,Math.min(2,v)); });
+      results[sym] = {sk, teze:String(p.teze||""), riziko:String(p.riziko||""), kat:String(p.katalyzator||""), nazev:p.nazev, sektor:p.sektor, beta:p.beta, div:p.div_vynos};
+    });
+    if (!Object.keys(results).length) throw {code:"invalid_json"};
+    mutate(()=>{
+      state.ai.committee = {at:new Date().toISOString(), souhrn:String(r.souhrn||""), rizika:Array.isArray(r.rizika)?r.rizika.map(String):[], results};
+      state.holdings.forEach(h=>{ const x = results[h.sym] || results[tick(h.sym)]; if (!x) return;
+        if ((!h.n || h.n===tick(h.sym)) && x.nazev) h.n = String(x.nazev).slice(0,40);
+        if (h.s==="Jiné" && SECTORS.includes(x.sektor)) h.s = x.sektor;
+        if (h.b==null && isFinite(+x.beta)) h.b = +x.beta;
+        if (h.d==null && isFinite(+x.div)) h.d = +x.div; });
+    });
+    status("Výbor dokončil hodnocení všech pozic.","ok");
+  } catch(e){ const msg = aiError(e); status(msg,"err"); render(); }
+  aiBusy = false; $("aiRun").disabled = !sampleFn;
+}
+
+/* ================= AI: ideas ================= */
+async function runIdeas(){
+  if (ideasBusy || !sampleFn){ if(!sampleFn) status("AI tu není dostupná.","err"); return; }
+  const m = calc();
+  ideasBusy = true; $("ideasRun").disabled = true;
+  $("ideasOut").innerHTML = `<p class="thinking">Hledám příležitosti pro ${PROFILE[state.profile].n} profil</p>`;
+  status("Hledám nákupní příležitosti…");
+  const prompt = `Jsi hlavní akciový stratég. Odpovídej česky, konkrétně, bez obecných frází.
+Investor: profil ${PROFILE[state.profile].n}, horizont ${state.horizon}, obchoduje přes XTB (americké, evropské a české akcie a ETF, i frakčně).
+Současné portfolio: ${JSON.stringify(m.rows.map(r=>({symbol:r.sym,sektor:r.s,vaha_pct:+r.w.toFixed(1)})))}
+Sektory: ${JSON.stringify(Object.fromEntries(Object.entries(m.bySector).map(([k,v])=>[k,+v.toFixed(1)])))}
+
+Najdi 8 nejlepších nákupních příležitostí, které investor ještě NEDRŽÍ. Kombinuj:
+- 2-3 tituly s nejsilnějším momentem a pozorností trhu (hype, narativ, silné revize zisků),
+- 2-3 kvalitní složitelné firmy za rozumnou cenu,
+- 1-2 tituly nebo ETF, které nejvíc zlepší diverzifikaci (chybějící sektory, regiony, měny),
+- u konzervativního profilu méně hype a víc dividend a kvality.
+Hodnocení dej jen "STRONG BUY" nebo "BUY" podle síly přesvědčení. Hype 0-100 = jak moc je titul středem pozornosti trhu. Vycházej ze svých nejnovějších znalostí a nepředstírej znalost dnešních cen.
+
+Vrať POUZE JSON:
+{"pohled":"1 věta: tvůj aktuální pohled na trh","napady":[{"ticker":"NVDA","xtb":"symbol ve formátu XTB, např. NVDA.US, ASML.NL, CEZ.CZ","nazev":"","sektor":"jeden z: ${SECTORS.join(", ")}","hodnoceni":"STRONG BUY","styl":"Hype|Růst|Kvalita|Hodnota|Dividenda|Diverzifikace","hype":80,"horizont":"do 1 roku|1-3 roky|5+ let","teze":"2 věty","riziko":"1 věta","proc_do_portfolia":"1 věta, konkrétně k jeho portfoliu"}]}`;
+  try {
+    const r = await sampleFn.json(prompt, {modelTier:"complex"});
+    const list = (Array.isArray(r?.napady)?r.napady:[]).filter(x=>x&&x.ticker).slice(0,10);
+    if (!list.length) throw {code:"invalid_json"};
+    ideasBusy = false;
+    mutate(()=>{ state.ai.ideas = {at:new Date().toISOString(), profile:PROFILE[state.profile].n, pohled:String(r.pohled||""), list}; });
+    status(`Nalezeno ${list.length} příležitostí.`,"ok");
+  } catch(e){ ideasBusy = false; renderIdeas(); status(aiError(e),"err"); }
+  ideasBusy = false; $("ideasRun").disabled = !sampleFn;
+}
+
+/* ================= XTB import ================= */
+const SYN = {
+  sym:["ticker","symbol","symbol instrumentu","nástroj","instrument"],
+  name:["instrument/position","instrument","název","name"],
+  cat:["category","kategorie"],
+  q:["volume","objem","množství","quantity","počet","kusy","lots"],
+  c:["open price","otevírací cena","cena otevření","vstupní cena","nákupní cena","průměrná cena","avg price","average price"],
+  p:["current price","market price","tržní cena","aktuální cena","cena trhu","close price"],
+  type:["type","typ","směr","direction"],
+  pv:["purchase value","nákupní hodnota","hodnota nákupu"]
+};
+const norm = s => String(s??"").toLowerCase().replace(/\s+/g," ").trim();
+function findCol(header, keys){ for (const k of keys){ const i = header.findIndex(h=>norm(h)===k); if (i>=0) return i; } for (const k of keys){ const i = header.findIndex(h=>norm(h).includes(k)); if (i>=0) return i; } return -1; }
+function findExact(header, keys){ for (const k of keys){ const i = header.findIndex(h=>norm(h)===k); if (i>=0) return i; } return -1; }
+function toNum(v){ if (typeof v==="number") return v; const s = String(v??"").replace(/\s| /g,"").replace(",","."); const n = parseFloat(s); return isNaN(n)?NaN:n; }
+function loadXLSX(){
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  return new Promise((res,rej)=>{ const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"; s.onload = ()=>res(window.XLSX); s.onerror = ()=>rej(new Error("Knihovnu pro Excel se nepodařilo načíst.")); document.head.appendChild(s); });
+}
+function sheetsFromText(text){
+  const lines = text.replace(/\r/g,"").split("\n").filter(l=>l.trim());
+  const delim = lines.some(l=>l.includes("\t")) ? "\t" : (lines[0]?.split(";").length > lines[0]?.split(",").length ? ";" : ",");
+  return [{name:"vložená data", rows: lines.map(l=>l.split(delim).map(c=>c.replace(/^"|"$/g,"").trim()))}];
+}
+async function readFile(file){
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".csv") || name.endsWith(".txt")) return sheetsFromText(await file.text());
+  if (name.endsWith(".zip")) throw new Error("Soubor je ZIP. Rozbal ho a nahraj Excel soubory, které jsou uvnitř.");
+  const X = await loadXLSX();
+  const wb = X.read(await file.arrayBuffer(), {type:"array"});
+  return wb.SheetNames.map(n=>({name:n, rows: X.utils.sheet_to_json(wb.Sheets[n], {header:1, raw:true, defval:""})}));
+}
+function detect(sheets){
+  const isOpen = n => /open|otev/i.test(n) && !/closed|uzav/i.test(n);
+  const ordered = [...sheets].sort((a,b)=> isOpen(b.name) - isOpen(a.name));
+  for (const sh of ordered){
+    for (let i=0;i<Math.min(sh.rows.length,60);i++){
+      const hdr = sh.rows[i].map(String);
+      const cols = {sym:findCol(hdr,SYN.sym), q:findCol(hdr,SYN.q), c:findCol(hdr,SYN.c), p:findCol(hdr,SYN.p), type:findCol(hdr,SYN.type), pv:findCol(hdr,SYN.pv), name:findExact(hdr,SYN.name), cat:findExact(hdr,SYN.cat), val:findExact(hdr,["value","hodnota"])};
+      if (cols.name===cols.sym) cols.name = -1;
+      if (cols.sym>=0 && cols.q>=0 && (cols.c>=0 || cols.pv>=0)){
+        let acct = null;
+        for (const r of sh.rows.slice(0,i)){ if (r.some(c=>/open position value|hodnota otevřených pozic/i.test(String(c)))){ const cc = r.map(String).find(c=>/^[A-Z]{3}$/.test(c.trim())); if (cc) acct = cc.trim(); } }
+        return {sheet:sh, hi:i, cols, acct};
+      }
+    }
+  }
+  return null;
+}
+function inferCcy(sym, implied, acct){
+  const base = ccyOf(sym);
+  if (!acct || !implied || !state.fx[acct]) return base;
+  let best = null, err = 1;
+  for (const x of Object.keys(state.fx)){ const e = Math.abs(state.fx[x]/state.fx[acct]/implied - 1); if (e < err){ err = e; best = x; } }
+  return err < 0.04 ? best : base;
+}
+function extract(sheet, hi, cols, acct){
+  const agg = new Map(), names = new Map(), cats = new Map(); let skipped = 0;
+  const body = sheet.rows.slice(hi+1);
+  const hasBuy = cols.type>=0 && body.some(r=>/^(buy|nákup)$/.test(norm(r[cols.type])));
+  for (const row of body){
+    const sym = String(row[cols.sym]??"").trim().toUpperCase();
+    if (!sym || /^(total|celkem|sum)/i.test(sym)) continue;
+    const type = cols.type>=0 ? norm(row[cols.type]) : "";
+    if (hasBuy && !type){
+      if (cols.name>=0){ const n = String(row[cols.name]??"").trim(); if (n && !/^\d+$/.test(n)) names.set(sym, n); }
+      if (cols.cat>=0) cats.set(sym, norm(row[cols.cat]));
+      continue;
+    }
+    if (type && /sell|prodej/.test(type)) { skipped++; continue; }
+    const q = toNum(row[cols.q]); let c = cols.c>=0 ? toNum(row[cols.c]) : NaN; const p = cols.p>=0 ? toNum(row[cols.p]) : NaN;
+    if (isNaN(c) && cols.pv>=0 && q) c = toNum(row[cols.pv])/q;
+    if (!(q>0) || !(c>=0)) continue;
+    const a = agg.get(sym) || {sym, q:0, cost:0, p:NaN, imp:null};
+    a.q += q; a.cost += q*c; if (!isNaN(p)) a.p = p;
+    if (cols.val>=0 && !isNaN(p) && p>0){ const v = toNum(row[cols.val]); if (v>0) a.imp = v/(q*p); }
+    if (!names.has(sym) && cols.name>=0){ const n = String(row[cols.name]??"").trim(); if (n && !/^\d+$/.test(n)) names.set(sym, n); }
+    agg.set(sym, a);
+  }
+  return {rows:[...agg.values()].map(a=>({sym:a.sym, q:+a.q.toFixed(6), c:a.cost/a.q, p:isNaN(a.p)?a.cost/a.q:a.p, ccy:inferCcy(a.sym, a.imp, acct), hasPx:!isNaN(a.p), n:names.get(a.sym)||"", etf:cats.get(a.sym)==="etf"})), skipped};
+}
+async function handleFiles(files){
+  files = [...files]; if (!files.length) return;
+  $("importPrev").innerHTML = `<p class="thinking">Čtu ${files.length>1?files.length+" soubory":esc(files[0].name)}</p>`;
+  const all = new Map(); let skipped = 0; const notes = [];
+  for (const f of files){
+    try {
+      const sheets = await readFile(f);
+      const d = detect(sheets);
+      if (!d){ if (files.length===1){ showMapping(sheets, f.name); return; } notes.push(`${f.name}: nenašel jsem tabulku pozic`); continue; }
+      const r = extract(d.sheet, d.hi, d.cols, d.acct); skipped += r.skipped;
+      notes.push(`${f.name}: ${r.rows.length} pozic${d.acct?` (účet ${d.acct})`:""}`);
+      r.rows.forEach(x=>{ const e = all.get(x.sym); if (!e) all.set(x.sym, x); else { const q = e.q + x.q; e.c = (e.q*e.c + x.q*x.c)/q; e.q = q; e.p = x.p; } });
+    } catch(err){ notes.push(`${f.name}: ${err.message||"nelze přečíst"}`); }
+  }
+  const rows = [...all.values()];
+  if (!rows.length){ $("importPrev").innerHTML = `<div class="empty">V ${files.length>1?"souborech":"souboru"} jsem nenašel žádné otevřené pozice.<br>${notes.map(esc).join("<br>")}</div>`; return; }
+  showPreview(rows, notes.join(" · "), skipped);
+}
+async function handleSheets(sheets, label){
+  const d = detect(sheets);
+  if (!d){ showMapping(sheets, label); return; }
+  const {rows, skipped} = extract(d.sheet, d.hi, d.cols, d.acct);
+  if (!rows.length){ $("importPrev").innerHTML = `<div class="empty">V datech jsem nenašel žádné otevřené pozice.</div>`; return; }
+  showPreview(rows, label, skipped);
+}
+function showMapping(sheets, label){
+  const sh = sheets.find(s=>s.rows.length>1) || sheets[0];
+  if (!sh){ $("importPrev").innerHTML = `<div class="empty">Soubor je prázdný.</div>`; return; }
+  const hdr = sh.rows[0].map(String);
+  const opt = (sel) => `<option value="-1">—</option>` + hdr.map((h,i)=>`<option value="${i}" ${i===sel?"selected":""}>${esc(h||("sloupec "+(i+1)))}</option>`).join("");
+  $("importPrev").innerHTML = `<div class="empty" style="margin-top:0">V <b>${esc(label)}</b> jsem nepoznal sloupce automaticky. Přiřaď je ručně (podle prvního řádku listu „${esc(sh.name)}“):
+    <div class="maprow">
+      <label class="f" for="mSym">Symbol<select id="mSym">${opt(0)}</select></label>
+      <label class="f" for="mQ">Kusy / objem<select id="mQ">${opt(1)}</select></label>
+      <label class="f" for="mC">Nákupní cena<select id="mC">${opt(2)}</select></label>
+      <label class="f" for="mP">Aktuální cena<select id="mP">${opt(3)}</select></label>
+    </div><button class="btn" type="button" id="mGo" style="margin-top:8px">Načíst s tímto přiřazením</button></div>`;
+  $("mGo").onclick = () => {
+    const cols = {sym:+$("mSym").value, q:+$("mQ").value, c:+$("mC").value, p:+$("mP").value, type:-1, pv:-1};
+    if (cols.sym<0||cols.q<0||cols.c<0){ status("Přiřaď aspoň symbol, kusy a nákupní cenu.","err"); return; }
+    const {rows, skipped} = extract(sh, 0, cols);
+    if (!rows.length){ status("S tímto přiřazením nevyšly žádné pozice.","err"); return; }
+    showPreview(rows, label, skipped);
+  };
+}
+function showPreview(rows, label, skipped){
+  importRows = rows;
+  const uk = rows.some(r=>r.ccy==="GBP");
+  const missingFx = [...new Set(rows.map(r=>r.ccy))].filter(c=>!state.fx[c]);
+  $("importPrev").innerHTML = `<div class="subh" style="margin-top:0">Náhled · ${esc(label)} · ${rows.length} pozic</div>
+  <div class="tw"><table><thead><tr><th class="l">Symbol</th><th>Kusy</th><th>Prům. nákup</th><th>Tržní cena</th><th>Měna</th><th>Z/Z %</th></tr></thead><tbody>
+  ${rows.map(r=>`<tr><td class="l tk">${esc(r.sym)}</td><td>${fmt(r.q, r.q%1?3:0)}</td><td>${fmt(r.c)}</td><td>${r.hasPx?fmt(r.p):`<span class="muted">${fmt(r.p)}</span>`}</td><td>${r.ccy}</td><td class="${cls(r.p-r.c)}">${pct((r.p-r.c)/r.c*100)}</td></tr>`).join("")}
+  </tbody></table></div>
+  ${skipped?`<p class="small muted">Přeskočeno ${skipped} krátkých (SELL) pozic.</p>`:""}
+  ${rows.some(r=>!r.hasPx)?`<p class="small muted">U pozic bez tržní ceny se použije nákupní cena, uprav ji pak v tabulce.</p>`:""}
+  ${uk?`<p class="small" style="color:var(--warn)">U britských akcií (.UK) zkontroluj, jestli jsou ceny v librách, nebo v pencích.</p>`:""}
+  ${missingFx.length?`<p class="small" style="color:var(--warn)">Doplň kurz pro ${missingFx.join(", ")} v panelu Profil investora.</p>`:""}
+  <div class="toolbar" style="margin-top:10px">
+    <button class="btn solid" type="button" id="impReplace">Nahradit portfolio</button>
+    <button class="btn" type="button" id="impMerge">Sloučit se stávajícím</button>
+    <button class="btn ghost" type="button" id="impCancel">Zrušit</button>
+  </div>`;
+  $("impReplace").onclick = () => applyImport(true);
+  $("impMerge").onclick = () => applyImport(false);
+  $("impCancel").onclick = () => { importRows = null; $("importPrev").innerHTML = ""; };
+}
+function applyImport(replace){
+  if (!importRows) return;
+  const n = importRows.length;
+  mutate(()=>{
+    const old = new Map(state.holdings.map(h=>[h.sym,h]));
+    const next = replace ? [] : state.holdings;
+    importRows.forEach(r=>{
+      const prev = old.get(r.sym);
+      const h = {sym:r.sym, n:prev?.n||r.n||tick(r.sym), s:prev?.s||(r.etf?"ETF / index":"Jiné"), ccy:r.ccy, q:r.q, c:r.c, p:r.p, b:prev?.b??null, d:prev?.d??null};
+      const i = next.findIndex(x=>x.sym===r.sym); if (i>=0) next[i] = h; else next.push(h);
+    });
+    state.holdings = next;
+  });
+  importRows = null;
+  $("importPrev").innerHTML = `<div class="empty" style="margin-top:0;border-color:var(--up)"><span class="up">Importováno ${n} pozic.</span> Teď svolej investiční výbor. Doplní názvy, sektory a ohodnotí každou pozici.</div>`;
+  status(`Import hotov: ${n} pozic.`,"ok");
+  $("holdPanel").scrollIntoView({behavior:"smooth",block:"start"});
+}
+$("file").addEventListener("change", async e => { await handleFiles(e.target.files); e.target.value=""; });
+const drop = $("drop");
+["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev, e=>{ e.preventDefault(); drop.classList.add("over"); }));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev, e=>{ e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => { if (e.dataTransfer?.files?.length) handleFiles(e.dataTransfer.files); });
+drop.addEventListener("keydown", e => { if (e.key==="Enter"||e.key===" "){ e.preventDefault(); $("file").click(); } });
+drop.tabIndex = 0;
+$("pasteGo").addEventListener("click", () => { const t = $("pasteBox").value.trim(); if (!t){ status("Nejdřív vlož data.","err"); return; } handleSheets(sheetsFromText(t), "vložená data"); });
+
+/* ================= interactions ================= */
+function status(msg, kind=""){ const s=$("status"); s.textContent = msg; s.className = "status "+kind; }
+document.addEventListener("click", e => {
+  const add = e.target.closest("[data-addsym]");
+  if (add){ $("fTk").value = add.dataset.addsym; $("fName").value = add.dataset.addname||""; $("fCcy").value = ccyOf(add.dataset.addsym); if (SECTORS.includes(add.dataset.addsec)) $("fSec").value = add.dataset.addsec; $("fQty").focus(); $("fQty").scrollIntoView({behavior:"smooth",block:"center"}); status(`Doplň kusy a cenu pro ${add.dataset.addsym}.`); return; }
+  const base = e.target.closest("[data-base]");
+  if (base){ state.base = base.dataset.base; render(); persist(); return; }
+});
+$("holdWrap").addEventListener("click", e => {
+  const th = e.target.closest("th[data-k]");
+  if (th && th.dataset.k!=="x"){ const k=th.dataset.k; if (sortKey===k) sortDir*=-1; else { sortKey=k; sortDir=["ticker","name","flag"].includes(k)?1:-1; } render(); return; }
+  const del = e.target.closest("[data-del]"); if (del){ removeHolding(del.dataset.del); return; }
+  if (e.target.closest("input")) return;
+  const tr = e.target.closest("tr[data-s]"); if (tr){ selected = tr.dataset.s; render(); }
+});
+$("rebal").addEventListener("click", e => { const tr = e.target.closest("tr[data-s]"); if (tr){ selected = tr.dataset.s; render(); $("detailPanel").scrollIntoView({behavior:"smooth",block:"center"}); } });
+$("holdWrap").addEventListener("change", e => {
+  const s = e.target.dataset?.px; if (!s) return;
+  const v = toNum(e.target.value); if (!(v>=0)){ status("Cena musí být kladné číslo.","err"); render(); return; }
+  mutate(()=>{ const h = state.holdings.find(x=>x.sym===s); if (h) h.p = v; });
+  status(`Cena ${tick(s)} nastavena na ${fmt(v)}.`,"ok");
+});
+$("fx").addEventListener("change", e => {
+  const c = e.target.dataset?.fx; if (!c) return; const v = toNum(e.target.value);
+  if (!(v>0)){ status("Kurz musí být kladné číslo.","err"); return; }
+  state.fx[c] = v; render(); persist(); status(`Kurz ${c}/CZK = ${fmt(v,3)}.`,"ok");
+});
+$("profile").addEventListener("change", e => { state.profile = e.target.value; render(); persist(); });
+$("horizon").addEventListener("change", e => { state.horizon = e.target.value; persist(); });
+$("mcYears").addEventListener("change", () => renderMC(calc()));
+let mcT; $("mcMonthly").addEventListener("input", () => { clearTimeout(mcT); mcT = setTimeout(()=>renderMC(calc()), 250); });
+let armed = null;
+function removeHolding(s){
+  if (armed!==s){ armed=s; status(`Pro smazání ${tick(s)} klikni na ✕ znovu.`); setTimeout(()=>{ if(armed===s) armed=null; },4000); return; }
+  armed=null; mutate(()=>{ state.holdings = state.holdings.filter(h=>h.sym!==s); }); status(`${tick(s)} odebráno.`,"ok");
+}
+$("fSec").innerHTML = SECTORS.map(s=>`<option>${s}</option>`).join("");
+$("fCcy").innerHTML = ["USD","EUR","CZK","GBP","PLN","CHF","DKK","SEK","NOK"].map(c=>`<option>${c}</option>`).join("");
+$("fTk").addEventListener("change", e => { $("fCcy").value = ccyOf(e.target.value.trim()); });
+$("addForm").addEventListener("submit", e => {
+  e.preventDefault();
+  let sym = $("fTk").value.trim().toUpperCase(); const q = toNum($("fQty").value), c = toNum($("fCost").value), pr = $("fPx").value;
+  if (!sym || !(q>0) || !(c>=0)){ status("Vyplň symbol, kusy a nákupní cenu.","err"); return; }
+  upsert({sym, n:$("fName").value.trim()||tick(sym), s:$("fSec").value, ccy:$("fCcy").value, q, c, p: pr===""?c:toNum(pr), b:null, d:null}, true);
+  e.target.reset(); $("fCcy").value="USD";
+});
+function upsert(h, replace){
+  mutate(()=>{
+    const ex = state.holdings.find(x=>x.sym===h.sym || tick(x.sym)===h.sym);
+    if (ex && !replace){ const nq = ex.q + h.q; ex.c = (ex.q*ex.c + h.q*h.c)/nq; ex.q = nq; if (h.p!=null) ex.p = h.p; h.sym = ex.sym; }
+    else if (ex){ Object.assign(ex, {...h, b:ex.b, d:ex.d}); }
+    else state.holdings.push(h);
+  });
+  selected = h.sym; render(); status(`${tick(h.sym)} uloženo.`,"ok");
+}
+$("startOwn").addEventListener("click", () => { mutate(()=>{ state.holdings = []; state.ai = {committee:null, ideas:null}; }); status("Portfolio vyprázdněno. Nahraj export z XTB nebo přidej pozici.","ok"); });
+$("goImport").addEventListener("click", () => $("importPanel").scrollIntoView({behavior:"smooth",block:"start"}));
+$("aiRun").addEventListener("click", runCommittee);
+$("aGo").addEventListener("click", renderAllocation);
+["aHor","aIdeas","aEtf","aN","aMin"].forEach(id=>$(id).addEventListener("change", ()=>{ syncAllocUI(); if ($("alcOut").innerHTML) renderAllocation(); }));
+loadAllocUI(); syncAllocUI();
+$("ideasRun").addEventListener("click", runIdeas);
+const findH = c => state.holdings.find(h=>h.sym===c) || state.holdings.find(h=>tick(h.sym)===c);
+$("cmdForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const raw = $("cmd").value.trim().toUpperCase(); $("cmd").value = ""; if (!raw) return;
+  const [c, ...a] = raw.split(/\s+/);
+  const go = id => $(id).scrollIntoView({behavior:"smooth",block:"start"});
+  if (c==="HELP"){ go("helpPanel"); status("Seznam příkazů je dole."); return; }
+  if (c==="PORT"){ go("holdPanel"); return; }
+  if (c==="AI"){ runCommittee(); return; }
+  if (c==="IDEAS"){ go("ideasPanel"); runIdeas(); return; }
+  if (c==="DEPO"){ go("allocPanel"); if (a[0]) $("aAmt").value = toNum(a[0]); renderAllocation(); return; }
+  if (c==="IMPORT"){ go("importPanel"); return; }
+  if (c==="REBAL"){ go("rebalPanel"); return; }
+  if (c==="RESET"){ state = freshSample(); render(); persist(); status("Načteno ukázkové portfolio.","ok"); return; }
+  if (c==="CCY"){ if (!["CZK","USD","EUR"].includes(a[0])){ status("Použij CCY CZK, USD nebo EUR.","err"); return; } state.base=a[0]; render(); persist(); return; }
+  if (c==="SORT"){ const map={VALUE:"value",PL:"pl",PLPCT:"plpct",WEIGHT:"weight",RATING:"rating",TICKER:"ticker"}; const k=map[a[0]]; if(!k){status("Použij SORT VALUE, PL, PLPCT, WEIGHT nebo RATING.","err");return;} sortKey=k; sortDir=k==="ticker"?1:-1; render(); return; }
+  if (c==="DEL"){ const h=findH(a[0]); if(!h){status(`${a[0]||"?"} v portfoliu není.`,"err");return;} armed=h.sym; removeHolding(h.sym); return; }
+  if (c==="PX"){ const h=findH(a[0]), v=toNum(a[1]); if(!h||!(v>=0)){status("Zápis: PX TICKER CENA, např. PX NVDA 182.5","err");return;} mutate(()=>{h.p=v;}); selected=h.sym; render(); status(`Cena ${tick(h.sym)} nastavena na ${fmt(v)}.`,"ok"); return; }
+  if (c==="ADD"){ const s=a[0], q=toNum(a[1]), cost=toNum(a[2]), px=a[3]!=null?toNum(a[3]):null; if(!s||!(q>0)||!(cost>=0)){status("Zápis: ADD SYMBOL KUSY NÁKUPNÍ_CENA [AKTUÁLNÍ_CENA]","err");return;} const ex=findH(s); upsert(ex?{sym:ex.sym,q,c:cost,p:px}:{sym:s,n:tick(s),s:"Jiné",ccy:ccyOf(s),q,c:cost,p:px??cost,b:null,d:null}, false); return; }
+  const h = findH(c);
+  if (h){ selected=h.sym; render(); go("detailPanel"); status(`${tick(h.sym)} · ${h.n}`); return; }
+  status(`Neznámý příkaz nebo ticker „${c}“. Napiš HELP.`,"err");
+});
+document.addEventListener("keydown", e => { if (e.key==="/" && !["INPUT","TEXTAREA","SELECT"].includes(document.activeElement.tagName)){ e.preventDefault(); $("cmd").focus(); } });
+
+renderPress();
+render();
+})();
+</script>
+
+
+</body></html>
